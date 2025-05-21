@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from schema_cat import schema_to_xml, xml_to_string, xml_to_base_model, prompt_with_schema, Provider
 
@@ -17,18 +17,18 @@ def xml_to_dict(elem):
 
 
 class SimpleModel(BaseModel):
-    foo: str
-    bar: int
-    baz: bool = True
+    foo: str = Field(..., description="A string field for foo.")
+    bar: int = Field(..., description="An integer field for bar.")
+    baz: bool = Field(True, description="A boolean field for baz, default True.")
 
 
 class NestedModel(BaseModel):
-    name: str
-    child: SimpleModel
+    name: str = Field(..., description="The name of the nested model.")
+    child: SimpleModel = Field(..., description="A SimpleModel instance as a child.")
 
 
 class ListModel(BaseModel):
-    items: list[int]
+    items: list[int] = Field(..., description="A list of integers.")
 
 
 def test_simple_model():
@@ -79,6 +79,7 @@ def test_xml_to_string_nested():
     assert '<NestedModel>' in xml_str
     assert '<child>' in xml_str
     assert '<foo>' in xml_str and '<bar>' in xml_str and '<baz>' in xml_str
+    print(xml_str)
 
 
 def test_xml_to_base_model_simple():
@@ -108,7 +109,7 @@ def test_xml_to_base_model_nested():
 def test_xml_to_base_model_list():
     # Create a ListModel with some items
     class ListModelWithData(BaseModel):
-        items: list[int]
+        items: list[int] = Field(..., description="A list of integers.")
 
     xml = ET.Element("ListModelWithData")
     for i in [1, 2, 3]:
@@ -121,8 +122,8 @@ def test_xml_to_base_model_list():
 
 
 class E2ESimpleModel(BaseModel):
-    foo: str
-    bar: int
+    foo: str = Field(..., description="A string field for foo.")
+    bar: int = Field(..., description="An integer field for bar.")
 
 
 @pytest.mark.asyncio

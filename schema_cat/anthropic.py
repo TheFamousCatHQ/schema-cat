@@ -3,6 +3,7 @@ import os
 from xml.etree import ElementTree
 
 from schema_cat.xml import xml_from_string
+from schema_cat.prompt import build_system_prompt
 
 logger = logging.getLogger("schema_cat")
 
@@ -16,7 +17,7 @@ async def call_anthropic(model: str,
     import anthropic
     api_key = os.getenv("ANTHROPIC_API_KEY")
     client = anthropic.AsyncAnthropic(api_key=api_key)
-    system_prompt = sys_prompt + "\n\nReturn the results in XML format using the following structure:\n\n" + xml_schema
+    system_prompt = build_system_prompt(sys_prompt, xml_schema)
     response = await client.messages.create(
         model=model,
         max_tokens=max_tokens,

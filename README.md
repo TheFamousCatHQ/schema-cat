@@ -2,6 +2,8 @@
 
 A Python library for creating typed prompts for Large Language Models (LLMs). Schema-cat allows you to define the structure of LLM responses using Pydantic models, making it easy to get structured, typed data from LLM APIs.
 
+Published by [The Famous Cat](https://www.thefamouscat.com).
+
 ## Features
 
 - Define response structures using Pydantic models

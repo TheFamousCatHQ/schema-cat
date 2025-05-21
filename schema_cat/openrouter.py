@@ -5,6 +5,7 @@ from xml.etree import ElementTree
 import httpx
 
 from schema_cat.xml import xml_from_string
+from schema_cat.prompt import build_system_prompt
 
 logger = logging.getLogger("schema_cat")
 
@@ -18,12 +19,12 @@ async def call_openrouter(model: str,
     api_key = os.getenv("OPENROUTER_API_KEY")
     base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
-    # Prepare the data payload
+    system_prompt = build_system_prompt(sys_prompt, xml_schema)
     data = {
         "model": model,
         "messages": [
             {"role": "system",
-             "content": sys_prompt + "\n\nReturn the results in XML format using the following structure:\n\n" + xml_schema},
+             "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
         "max_tokens": max_tokens,

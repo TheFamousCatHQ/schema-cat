@@ -3,6 +3,7 @@ import os
 from xml.etree import ElementTree
 
 from schema_cat.xml import xml_from_string
+from schema_cat.prompt import build_system_prompt
 
 logger = logging.getLogger("schema_cat")
 
@@ -17,9 +18,10 @@ async def call_openai(model: str,
     api_key = os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+    system_prompt = build_system_prompt(sys_prompt, xml_schema)
     messages = [
         {"role": "system",
-         "content": sys_prompt + "\n\nReturn the results in XML format using the following structure:\n\n" + xml_schema},
+         "content": system_prompt},
         {"role": "user", "content": user_prompt}
     ]
     response = await client.chat.completions.create(

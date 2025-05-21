@@ -49,9 +49,9 @@ def test_simple_model():
     d = xml_to_dict(xml)
     assert 'SimpleModel' in d
     assert set(d['SimpleModel'].keys()) == {'foo', 'bar', 'baz'}
-    assert d['SimpleModel']['foo'] == 'A string field for foo.'
-    assert d['SimpleModel']['bar'] == 'An integer field for bar.'
-    assert d['SimpleModel']['baz'] == 'A boolean field for baz, default True.'
+    assert d['SimpleModel']['foo'] == 'A_STRING_FIELD_FOR_FOO'
+    assert d['SimpleModel']['bar'] == 'AN_INTEGER_FIELD_FOR_BAR'
+    assert d['SimpleModel']['baz'] == 'A_BOOLEAN_FIELD_FOR_BAZ_DEFAULT_TRUE'
 
 
 def test_nested_model():
@@ -60,10 +60,10 @@ def test_nested_model():
     assert 'NestedModel' in d
     assert 'name' in d['NestedModel']
     assert 'child' in d['NestedModel']
-    assert d['NestedModel']['name'] == 'The name of the nested model.'
-    assert d['NestedModel']['child']['foo'] == 'A string field for foo.'
-    assert d['NestedModel']['child']['bar'] == 'An integer field for bar.'
-    assert d['NestedModel']['child']['baz'] == 'A boolean field for baz, default True.'
+    assert d['NestedModel']['name'] == 'THE_NAME_OF_THE_NESTED_MODEL'
+    assert d['NestedModel']['child']['foo'] == 'A_STRING_FIELD_FOR_FOO'
+    assert d['NestedModel']['child']['bar'] == 'AN_INTEGER_FIELD_FOR_BAR'
+    assert d['NestedModel']['child']['baz'] == 'A_BOOLEAN_FIELD_FOR_BAZ_DEFAULT_TRUE'
 
 
 def test_list_model():
@@ -71,11 +71,11 @@ def test_list_model():
     d = xml_to_dict(xml)
     assert 'ListModel' in d
     assert 'items' in d['ListModel']
-    # Should be a list of two elements with the description
+    # Should be a list of two elements with the TO_THIS_STYLE description
     items = d['ListModel']['items']
     if isinstance(items, dict) and 'items' in items:
         items = items['items']
-    assert items == ['A list of integers.', 'A list of integers.']
+    assert items == ['A_LIST_OF_INTEGERS', 'A_LIST_OF_INTEGERS']
 
 
 def test_xml_to_string_simple():

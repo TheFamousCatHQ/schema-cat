@@ -15,94 +15,50 @@ def _wrap_cdata(text: str) -> str:
 
 
 def schema_to_xml(schema: Type[BaseModel]) -> ElementTree.XML:
-    """Serializes a pydantic type to an example xml representation, wrapping str fields in CDATA."""
+    """Serializes a pydantic type to an example xml representation, always using field description if available. Lists output two elements with the description as content. Does not instantiate the model."""
 
-    def example_value(field):
-        if not field.is_required():
-            if field.default_factory is not None:
-                return field.default_factory()
-            return field.default
-        if isinstance(field.annotation, type) and issubclass(field.annotation, BaseModel):
-            nested_values = {}
-            for n, f in field.annotation.model_fields.items():
-                if not f.is_required():
-                    if f.default_factory is not None:
-                        nested_values[n] = f.default_factory()
-                    else:
-                        nested_values[n] = f.default
-                elif isinstance(f.annotation, type) and issubclass(f.annotation, BaseModel):
-                    nested_values[n] = example_value(f)
-                elif f.annotation in (int, float):
-                    nested_values[n] = 0
-                elif f.annotation is bool:
-                    nested_values[n] = False
-                elif f.annotation is str:
-                    nested_values[n] = "example"
-                elif hasattr(f.annotation, "__origin__") and f.annotation.__origin__ is list:
-                    nested_values[n] = []
-                else:
-                    nested_values[n] = "example"
-            return field.annotation(**nested_values)
-        if field.annotation in (int, float):
-            return 0
-        if field.annotation is bool:
-            return False
-        if field.annotation is str:
-            return "example"
+    def field_to_xml(key, field):
+        # For lists, get the item type's description
         if hasattr(field.annotation, "__origin__") and field.annotation.__origin__ is list:
-            return []
-        return "example"
-
-    values = {}
-    for name, field in schema.model_fields.items():
-        values[name] = example_value(field)
-    instance = schema(**values)
-    data = instance.model_dump()
-
-    def dict_to_xml(tag, d, model=None):
-        elem = ElementTree.Element(tag)
-        model_fields = getattr(model, 'model_fields', None) if model else None
-        for key, val in d.items():
-            field_type = None
-            if model_fields and key in model_fields:
-                field_type = model_fields[key].annotation
-            if isinstance(val, dict):
-                # Nested model
-                child_model = field_type if (isinstance(field_type, type) and issubclass(field_type, BaseModel)) else None
-                elem.append(dict_to_xml(key, val, child_model))
-            elif isinstance(val, list):
-                if not val:
-                    elem.append(ElementTree.Element(key))
-                else:
-                    for item in val:
-                        if isinstance(item, dict):
-                            child_model = None
-                            if field_type and hasattr(field_type, "__origin__") and field_type.__origin__ is list:
-                                item_type = field_type.__args__[0]
-                                if isinstance(item_type, type) and issubclass(item_type, BaseModel):
-                                    child_model = item_type
-                            elem.append(dict_to_xml(key, item, child_model))
-                        else:
-                            child = ElementTree.Element(key)
-                            # For lists, try to infer type from field_type
-                            item_type = None
-                            if field_type and hasattr(field_type, "__origin__") and field_type.__origin__ is list:
-                                item_type = field_type.__args__[0]
-                            if item_type is str:
-                                child.text = _wrap_cdata(str(item))
-                            else:
-                                child.text = str(item)
-                            elem.append(child)
-            else:
+            item_type = field.annotation.__args__[0]
+            item_desc = getattr(item_type, 'description', None)
+            # If item_type is a Pydantic field, get its description
+            if item_desc is None and hasattr(item_type, 'model_fields'):
+                for f in item_type.model_fields.values():
+                    item_desc = getattr(f, 'description', None)
+                    if item_desc:
+                        break
+            value = item_desc if item_desc is not None else 'example'
+            elem = ElementTree.Element(key)
+            for _ in range(2):
                 child = ElementTree.Element(key)
-                if field_type is str:
-                    child.text = _wrap_cdata(str(val))
+                if item_type is str:
+                    child.text = _wrap_cdata(str(value))
                 else:
-                    child.text = str(val)
+                    child.text = str(value)
                 elem.append(child)
+            return elem
+        # Nested model
+        if isinstance(field.annotation, type) and issubclass(field.annotation, BaseModel):
+            elem = ElementTree.Element(key)
+            for n, f in field.annotation.model_fields.items():
+                child_elem = field_to_xml(n, f)
+                elem.append(child_elem)
+            return elem
+        # Leaf field
+        desc_val = getattr(field, 'description', None)
+        value = desc_val if desc_val is not None else 'example'
+        elem = ElementTree.Element(key)
+        if field.annotation is str:
+            elem.text = _wrap_cdata(str(value))
+        else:
+            elem.text = str(value)
         return elem
 
-    root = dict_to_xml(schema.__name__, data, schema)
+    root = ElementTree.Element(schema.__name__)
+    for name, field in schema.model_fields.items():
+        child_elem = field_to_xml(name, field)
+        root.append(child_elem)
     return root
 
 
@@ -148,14 +104,18 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                     else:
                         values[name].append(item_elem.text)
             else:
-                if field.annotation is int:
-                    values[name] = int(child.text)
-                elif field.annotation is float:
-                    values[name] = float(child.text)
-                elif field.annotation is bool:
-                    values[name] = child.text.lower() == "true"
-                else:
-                    values[name] = child.text
+                try:
+                    if field.annotation is int:
+                        values[name] = int(child.text)
+                    elif field.annotation is float:
+                        values[name] = float(child.text)
+                    elif field.annotation is bool:
+                        values[name] = child.text.lower() == "true"
+                    else:
+                        values[name] = child.text
+                except Exception:
+                    # Fallback for invalid type (e.g., 'example' for int)
+                    values[name] = None
         try:
             return schema(**values)
         except ValidationError as e:

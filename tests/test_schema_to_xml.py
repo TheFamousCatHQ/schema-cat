@@ -73,8 +73,14 @@ def test_list_model():
     assert 'items' in d['ListModel']
     # Should be a list of two elements with the TO_THIS_STYLE description
     items = d['ListModel']['items']
-    if isinstance(items, dict) and 'items' in items:
-        items = items['items']
+    # Handle different possible structures
+    if isinstance(items, dict):
+        # Case 1: Nested structure with same name {'items': [...]}
+        if 'items' in items:
+            items = items['items']
+        # Case 2: Nested structure with singular name {'item': [...]}
+        elif 'item' in items:
+            items = items['item']
     assert items == ['A_LIST_OF_INTEGERS', 'A_LIST_OF_INTEGERS']
 
 

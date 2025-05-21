@@ -28,6 +28,6 @@ class BugAnalysisReport(BaseModel):
 def test_to_xml():
     xml_elem = schema_to_xml(BugAnalysisReport)
     xml = xml_to_string(xml_elem)
-    print(xml)
-    print(xml_to_base_model(xml_elem, BugAnalysisReport))
     assert xml is not None
+    model = xml_to_base_model(xml_elem, BugAnalysisReport)
+    assert model is not None

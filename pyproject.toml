@@ -1,6 +1,6 @@
 [project]
 name = "schema-cat"
-version = "0.1.7"
+version = "0.1.9"
 description = "A Python library for typed prompts"
 authors = [
     {name = "Michael Lahr",email = "michael.lahr@gmail.com"}
@@ -32,4 +32,3 @@ check-and-build = "scripts.check_and_build:main"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
 pytest-asyncio = "^0.26.0"
-

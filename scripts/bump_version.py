@@ -1,5 +1,5 @@
-import sys
 import subprocess
+import sys
 
 
 def main():
@@ -13,5 +13,6 @@ def main():
         print(f"Failed to bump version: {e}")
         sys.exit(1)
 
+
 if __name__ == "__main__":
-    main() 
+    main()

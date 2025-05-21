@@ -1,7 +1,9 @@
-from pydantic import BaseModel
 import xml.etree.ElementTree as ET
 
-from schema_cat import schema_to_xml, xml_to_string, xml_to_base_model
+import pytest
+from pydantic import BaseModel
+
+from schema_cat import schema_to_xml, xml_to_string, xml_to_base_model, prompt_with_schema, Provider
 
 
 def xml_to_dict(elem):
@@ -107,6 +109,7 @@ def test_xml_to_base_model_list():
     # Create a ListModel with some items
     class ListModelWithData(BaseModel):
         items: list[int]
+
     xml = ET.Element("ListModelWithData")
     for i in [1, 2, 3]:
         item_elem = ET.Element("items")
@@ -115,3 +118,41 @@ def test_xml_to_base_model_list():
     model = xml_to_base_model(xml, ListModelWithData)
     assert isinstance(model, ListModelWithData)
     assert model.items == [1, 2, 3]
+
+
+class E2ESimpleModel(BaseModel):
+    foo: str
+    bar: int
+
+
+@pytest.mark.asyncio
+@pytest.mark.slow
+async def test_prompt_with_schema_openrouter_e2e():
+    prompt = "Return foo as 'hello' and bar as 42."
+    model = "google/gemma-3-4b-it"  # Use a model you have access to
+    result = await prompt_with_schema(prompt, E2ESimpleModel, model, Provider.OPENROUTER)
+    assert isinstance(result, E2ESimpleModel)
+    assert result.foo.lower() == "hello"
+    assert result.bar == 42
+
+
+@pytest.mark.asyncio
+@pytest.mark.slow
+async def test_prompt_with_schema_openai_e2e():
+    prompt = "Return foo as 'world' and bar as 99."
+    model = "gpt-4.1-nano-2025-04-14"  # Use a model you have access to
+    result = await prompt_with_schema(prompt, E2ESimpleModel, model, Provider.OPENAI)
+    assert isinstance(result, E2ESimpleModel)
+    assert result.foo.lower() == "world"
+    assert result.bar == 99
+
+
+@pytest.mark.asyncio
+@pytest.mark.slow
+async def test_prompt_with_schema_anthropic_e2e():
+    prompt = "Return foo as 'anthropic' and bar as 123."
+    model = "claude-3-5-haiku-20241022"  # Use a model you have access to
+    result = await prompt_with_schema(prompt, E2ESimpleModel, model, Provider.ANTHROPIC)
+    assert isinstance(result, E2ESimpleModel)
+    assert result.foo.lower() == "anthropic"
+    assert result.bar == 123

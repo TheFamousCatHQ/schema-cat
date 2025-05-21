@@ -27,7 +27,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 bump-version = "schema_cat.bump_version:main"
+check-and-build = "scripts.check_and_build:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
+pytest-asyncio = "^0.26.0"
 

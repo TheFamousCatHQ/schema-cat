@@ -1,6 +1,7 @@
 """schema-cat: A Python library for typed prompts."""
 import logging
 import os
+from enum import Enum
 from typing import Type, TypeVar
 from xml.etree import ElementTree
 
@@ -14,6 +15,12 @@ logger = logging.getLogger("schema_cat")
 T = TypeVar('T', bound=BaseModel)
 
 
+class Provider(str, Enum):
+    OPENROUTER = "openrouter"
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+
+
 def hello_world():
     """Entry function that returns 'Hello World'."""
     return "Hello World"
@@ -23,7 +30,7 @@ async def call_openrouter(model: str,
                           sys_prompt: str,
                           user_prompt: str,
                           xml_schema: str,
-                          max_tokens: int = 16000,
+                          max_tokens: int = 8192,
                           temperature: float = 0.0) -> ElementTree.XML:
     api_key = os.getenv("OPENROUTER_API_KEY")
     base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
@@ -153,6 +160,7 @@ def xml_to_string(xml_tree: ElementTree.XML) -> str:
 
 def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
     """Converts an ElementTree XML element to a Pydantic BaseModel instance."""
+
     def parse_element(elem, schema):
         values = {}
         for name, field in schema.model_fields.items():
@@ -183,12 +191,75 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                 else:
                     values[name] = child.text
         return schema(**values)
+
     return parse_element(xml_tree, schema)
 
 
-def prompt_with_schema(prompt: str, schema: Type[T], model: str, provider: str) -> T:
+async def call_openai(model: str,
+                      sys_prompt: str,
+                      user_prompt: str,
+                      xml_schema: str,
+                      max_tokens: int = 8192,
+                      temperature: float = 0.0) -> ElementTree.XML:
+    import openai
+    api_key = os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+    messages = [
+        {"role": "system",
+         "content": sys_prompt + "\n\nReturn the results in XML format using the following structure:\n\n" + xml_schema},
+        {"role": "user", "content": user_prompt}
+    ]
+    response = await client.chat.completions.create(
+        model=model,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    content = response.choices[0].message.content.strip()
+    logger.info("Successfully received response from OpenAI")
+    logger.debug(f"Raw response content: {content}")
+    root = xml_from_string(content)
+    logger.debug("Successfully parsed response as XML")
+    return root
+
+
+async def call_anthropic(model: str,
+                         sys_prompt: str,
+                         user_prompt: str,
+                         xml_schema: str,
+                         max_tokens: int = 8192,
+                         temperature: float = 0.0) -> ElementTree.XML:
+    import anthropic
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    system_prompt = sys_prompt + "\n\nReturn the results in XML format using the following structure:\n\n" + xml_schema
+    response = await client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}]
+    )
+    content = response.content[0].text.strip() if hasattr(response.content[0], 'text') else response.content[0][
+        'text'].strip()
+    logger.info("Successfully received response from Anthropic")
+    logger.debug(f"Raw response content: {content}")
+    root = xml_from_string(content)
+    logger.debug("Successfully parsed response as XML")
+    return root
+
+
+async def prompt_with_schema(prompt: str, schema: Type[T], model: str, provider: Provider) -> T:
     xml: str = xml_to_string(schema_to_xml(schema))
-    if provider == "openrouter":
-        return xml_to_base_model(call_openrouter(model, "", prompt, xml_schema=xml), schema)
+    if provider == Provider.OPENROUTER:
+        xml_elem = await call_openrouter(model, "", prompt, xml_schema=xml)
+        return xml_to_base_model(xml_elem, schema)
+    elif provider == Provider.OPENAI:
+        xml_elem = await call_openai(model, "", prompt, xml_schema=xml)
+        return xml_to_base_model(xml_elem, schema)
+    elif provider == Provider.ANTHROPIC:
+        xml_elem = await call_anthropic(model, "", prompt, xml_schema=xml)
+        return xml_to_base_model(xml_elem, schema)
     else:
         raise Exception(f"Provider {provider} not supported")

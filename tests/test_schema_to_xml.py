@@ -110,8 +110,8 @@ async def test_prompt_with_schema_openrouter_e2e():
     model = "google/gemma-3-4b-it"  # Use a model you have access to
     result = await prompt_with_schema(prompt, E2ESimpleModel, model, Provider.OPENROUTER)
     assert isinstance(result, E2ESimpleModel)
-    assert result.foo is None or result.foo == 'example'
-    assert result.bar is None or result.bar == 'example'
+    assert isinstance(result.foo, str)
+    assert isinstance(result.bar, int)
 
 
 @pytest.mark.asyncio
@@ -121,8 +121,8 @@ async def test_prompt_with_schema_openai_e2e():
     model = "gpt-4.1-nano-2025-04-14"  # Use a model you have access to
     result = await prompt_with_schema(prompt, E2ESimpleModel, model, Provider.OPENAI)
     assert isinstance(result, E2ESimpleModel)
-    assert result.foo is None or result.foo == 'example'
-    assert result.bar is None or result.bar == 'example'
+    assert isinstance(result.foo, str)
+    assert isinstance(result.bar, int)
 
 
 @pytest.mark.asyncio
@@ -132,5 +132,5 @@ async def test_prompt_with_schema_anthropic_e2e():
     model = "claude-3-5-haiku-20241022"  # Use a model you have access to
     result = await prompt_with_schema(prompt, E2ESimpleModel, model, Provider.ANTHROPIC)
     assert isinstance(result, E2ESimpleModel)
-    assert result.foo is None or result.foo == 'example'
-    assert result.bar is None or result.bar == 'example'
+    assert isinstance(result.foo, str)
+    assert isinstance(result.bar, int)

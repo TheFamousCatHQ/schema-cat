@@ -6,13 +6,19 @@ from pydantic import BaseModel, Field
 from schema_cat import schema_to_xml, xml_to_string, xml_to_base_model, prompt_with_schema, Provider
 
 
+def strip_cdata(text):
+    if text and text.startswith('<![CDATA[') and text.endswith(']]>'):
+        return text[9:-3]
+    return text
+
+
 def xml_to_dict(elem):
     d = {elem.tag: {}}
     for child in elem:
         if len(child):
             d[elem.tag][child.tag] = xml_to_dict(child)[child.tag]
         else:
-            d[elem.tag][child.tag] = child.text
+            d[elem.tag][child.tag] = strip_cdata(child.text)
     return d
 
 

@@ -109,8 +109,15 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                 values[name] = []
                 # For BaseModel items, look for elements with the item type name
                 if isinstance(item_type, type) and issubclass(item_type, BaseModel):
-                    for item_elem in elem.findall(item_type.__name__):
-                        values[name].append(parse_element(item_elem, item_type))
+                    # First, check if the child element exists and has children
+                    if child is not None and len(list(child)) > 0:
+                        # If the child element has children, look for list items there
+                        for item_elem in child.findall(item_type.__name__):
+                            values[name].append(parse_element(item_elem, item_type))
+                    else:
+                        # Otherwise, look for list items directly under the parent element
+                        for item_elem in elem.findall(item_type.__name__):
+                            values[name].append(parse_element(item_elem, item_type))
                 else:
                     # For primitive types, look for elements with the field name or singular form
                     # First, check if the child element exists and has children

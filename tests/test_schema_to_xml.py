@@ -1,6 +1,7 @@
 from pydantic import BaseModel
+import xml.etree.ElementTree as ET
 
-from schema_cat import schema_to_xml
+from schema_cat import schema_to_xml, xml_to_string, xml_to_base_model
 
 
 def xml_to_dict(elem):
@@ -56,3 +57,61 @@ def test_list_model():
     assert 'items' in d['ListModel']
     # Should be empty list, so items is not present as subelements
     assert d['ListModel']['items'] is None or d['ListModel']['items'] == ''
+
+
+def test_xml_to_string_simple():
+    xml_elem = schema_to_xml(SimpleModel)
+    xml_str = xml_to_string(xml_elem)
+    assert isinstance(xml_str, str)
+    assert xml_str.strip().startswith('<?xml')
+    assert '<SimpleModel>' in xml_str
+    assert '<foo>' in xml_str and '<bar>' in xml_str and '<baz>' in xml_str
+    # Check pretty-print (indented)
+    assert '  <foo>' in xml_str or '\n  <foo>' in xml_str
+
+
+def test_xml_to_string_nested():
+    xml_elem = schema_to_xml(NestedModel)
+    xml_str = xml_to_string(xml_elem)
+    assert isinstance(xml_str, str)
+    assert '<NestedModel>' in xml_str
+    assert '<child>' in xml_str
+    assert '<foo>' in xml_str and '<bar>' in xml_str and '<baz>' in xml_str
+
+
+def test_xml_to_base_model_simple():
+    xml_elem = schema_to_xml(SimpleModel)
+    xml_str = xml_to_string(xml_elem)
+    parsed_elem = ET.fromstring(xml_str)
+    model = xml_to_base_model(parsed_elem, SimpleModel)
+    assert isinstance(model, SimpleModel)
+    assert model.foo == "example"
+    assert model.bar == 0
+    assert model.baz in (True, False)
+
+
+def test_xml_to_base_model_nested():
+    xml_elem = schema_to_xml(NestedModel)
+    xml_str = xml_to_string(xml_elem)
+    parsed_elem = ET.fromstring(xml_str)
+    model = xml_to_base_model(parsed_elem, NestedModel)
+    assert isinstance(model, NestedModel)
+    assert model.name == "example"
+    assert isinstance(model.child, SimpleModel)
+    assert model.child.foo == "example"
+    assert model.child.bar == 0
+    assert model.child.baz in (True, False)
+
+
+def test_xml_to_base_model_list():
+    # Create a ListModel with some items
+    class ListModelWithData(BaseModel):
+        items: list[int]
+    xml = ET.Element("ListModelWithData")
+    for i in [1, 2, 3]:
+        item_elem = ET.Element("items")
+        item_elem.text = str(i)
+        xml.append(item_elem)
+    model = xml_to_base_model(xml, ListModelWithData)
+    assert isinstance(model, ListModelWithData)
+    assert model.items == [1, 2, 3]

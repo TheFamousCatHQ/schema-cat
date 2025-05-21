@@ -27,16 +27,24 @@ def schema_to_xml(schema: Type[BaseModel]) -> ElementTree.XML:
         # List handling
         if hasattr(field.annotation, "__origin__") and field.annotation.__origin__ is list:
             item_type = field.annotation.__args__[0]
-            value = getattr(field, 'description', None) or 'example'
-            value = to_this_style(value)
             elem = ElementTree.Element(key)
             for _ in range(2):
-                child = ElementTree.Element(key)
-                if item_type is str:
-                    child.text = _wrap_cdata(str(value))
+                # If item_type is a BaseModel, use its name for the child element
+                if isinstance(item_type, type) and issubclass(item_type, BaseModel):
+                    child = ElementTree.Element(item_type.__name__)
+                    for n, f in item_type.model_fields.items():
+                        grandchild = field_to_xml(n, f)
+                        child.append(grandchild)
+                    elem.append(child)
                 else:
-                    child.text = str(value)
-                elem.append(child)
+                    value = getattr(field, 'description', None) or 'example'
+                    value = to_this_style(value)
+                    child = ElementTree.Element(key[:-1] if key.endswith('s') else key)
+                    if item_type is str:
+                        child.text = _wrap_cdata(str(value))
+                    else:
+                        child.text = str(value)
+                    elem.append(child)
             return elem
         # Nested model
         if isinstance(field.annotation, type) and issubclass(field.annotation, BaseModel):
@@ -99,11 +107,27 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
             elif hasattr(field.annotation, "__origin__") and field.annotation.__origin__ is list:
                 item_type = field.annotation.__args__[0]
                 values[name] = []
-                for item_elem in elem.findall(name):
-                    if isinstance(item_type, type) and issubclass(item_type, BaseModel):
+                # For BaseModel items, look for elements with the item type name
+                if isinstance(item_type, type) and issubclass(item_type, BaseModel):
+                    for item_elem in elem.findall(item_type.__name__):
                         values[name].append(parse_element(item_elem, item_type))
+                else:
+                    # For primitive types, look for elements with the field name or singular form
+                    # First, check if the child element exists and has children
+                    if child is not None and len(list(child)) > 0:
+                        # If the child element has children, look for list items there
+                        singular_name = name[:-1] if name.endswith('s') else name
+                        for item_elem in child.findall(singular_name):
+                            values[name].append(item_elem.text)
                     else:
-                        values[name].append(item_elem.text)
+                        # Otherwise, look for list items directly under the parent element
+                        # Try the exact field name first
+                        items = elem.findall(name)
+                        # If not found, try the singular form (remove 's' at the end)
+                        if not items and name.endswith('s'):
+                            items = elem.findall(name[:-1])
+                        for item_elem in items:
+                            values[name].append(item_elem.text)
             else:
                 try:
                     if field.annotation is int:

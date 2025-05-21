@@ -1,14 +1,20 @@
 [project]
 name = "schema-cat"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Python library for typed prompts"
 authors = [
     {name = "Michael Lahr",email = "michael.lahr@gmail.com"}
 ]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 dependencies = [
+    "pydantic (>=2.11.4,<3.0.0)",
+    "python-dotenv (>=1.1.0,<2.0.0)",
+    "openai (>=1.79.0,<2.0.0)",
+    "lxml (>=5.4.0,<6.0.0)",
+    "bs4 (>=0.0.2,<0.0.3)",
+    "anthropic (>=0.51.0,<0.52.0)"
 ]
 packages = [
     { include = "schema_cat" }
@@ -18,3 +24,10 @@ packages = [
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+bump-version = "schema_cat.bump_version:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+

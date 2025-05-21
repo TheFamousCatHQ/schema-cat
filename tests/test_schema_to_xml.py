@@ -12,11 +12,20 @@ def strip_cdata(text):
 
 def xml_to_dict(elem):
     d = {elem.tag: {}}
-    for child in elem:
-        if len(child):
-            d[elem.tag][child.tag] = xml_to_dict(child)[child.tag]
+    children = list(elem)
+    if not children:
+        d[elem.tag] = strip_cdata(elem.text)
+        return d
+    child_dict = {}
+    for child in children:
+        child_data = xml_to_dict(child)[child.tag]
+        if child.tag in child_dict:
+            if not isinstance(child_dict[child.tag], list):
+                child_dict[child.tag] = [child_dict[child.tag]]
+            child_dict[child.tag].append(child_data)
         else:
-            d[elem.tag][child.tag] = strip_cdata(child.text)
+            child_dict[child.tag] = child_data
+    d[elem.tag] = child_dict
     return d
 
 
@@ -64,10 +73,9 @@ def test_list_model():
     assert 'items' in d['ListModel']
     # Should be a list of two elements with the description
     items = d['ListModel']['items']
-    if isinstance(items, list):
-        assert items == ['A list of integers.', 'A list of integers.']
-    else:
-        assert items == 'A list of integers.'
+    if isinstance(items, dict) and 'items' in items:
+        items = items['items']
+    assert items == ['A list of integers.', 'A list of integers.']
 
 
 def test_xml_to_string_simple():

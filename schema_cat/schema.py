@@ -18,17 +18,11 @@ def schema_to_xml(schema: Type[BaseModel]) -> ElementTree.XML:
     """Serializes a pydantic type to an example xml representation, always using field description if available. Lists output two elements with the description as content. Does not instantiate the model."""
 
     def field_to_xml(key, field):
-        # For lists, get the item type's description
+        # List handling
         if hasattr(field.annotation, "__origin__") and field.annotation.__origin__ is list:
             item_type = field.annotation.__args__[0]
-            item_desc = getattr(item_type, 'description', None)
-            # If item_type is a Pydantic field, get its description
-            if item_desc is None and hasattr(item_type, 'model_fields'):
-                for f in item_type.model_fields.values():
-                    item_desc = getattr(f, 'description', None)
-                    if item_desc:
-                        break
-            value = item_desc if item_desc is not None else 'example'
+            # Use the field's description for primitive lists
+            value = getattr(field, 'description', None) or 'example'
             elem = ElementTree.Element(key)
             for _ in range(2):
                 child = ElementTree.Element(key)

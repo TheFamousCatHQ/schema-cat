@@ -18,16 +18,33 @@ class Provider(str, Enum):
     ANTHROPIC = "anthropic"
 
 
-async def prompt_with_schema(prompt: str, schema: Type[T], model: str, provider: Provider) -> T:
+async def prompt_with_schema(
+    prompt: str,
+    schema: Type[T],
+    model: str,
+    provider: Provider,
+    max_tokens: int = 8192,
+    temperature: float = 0.0,
+    sys_prompt: str = ""
+) -> T:
     xml: str = xml_to_string(schema_to_xml(schema))
     if provider == Provider.OPENROUTER:
-        xml_elem = await call_openrouter(model, "", prompt, xml_schema=xml)
+        xml_elem = await call_openrouter(
+            model, sys_prompt, prompt, xml_schema=xml,
+            max_tokens=max_tokens, temperature=temperature
+        )
         return xml_to_base_model(xml_elem, schema)
     elif provider == Provider.OPENAI:
-        xml_elem = await call_openai(model, "", prompt, xml_schema=xml)
+        xml_elem = await call_openai(
+            model, sys_prompt, prompt, xml_schema=xml,
+            max_tokens=max_tokens, temperature=temperature
+        )
         return xml_to_base_model(xml_elem, schema)
     elif provider == Provider.ANTHROPIC:
-        xml_elem = await call_anthropic(model, "", prompt, xml_schema=xml)
+        xml_elem = await call_anthropic(
+            model, sys_prompt, prompt, xml_schema=xml,
+            max_tokens=max_tokens, temperature=temperature
+        )
         return xml_to_base_model(xml_elem, schema)
     else:
         raise Exception(f"Provider {provider} not supported")

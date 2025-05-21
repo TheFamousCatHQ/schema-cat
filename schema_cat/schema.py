@@ -1,9 +1,12 @@
+import logging
 from typing import Type, TypeVar
 from xml.etree import ElementTree
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 T = TypeVar('T', bound=BaseModel)
+
+logger = logging.getLogger("schema_cat")
 
 
 def schema_to_xml(schema: Type[BaseModel]) -> ElementTree.XML:
@@ -114,6 +117,10 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                     values[name] = child.text.lower() == "true"
                 else:
                     values[name] = child.text
-        return schema(**values)
+        try:
+            return schema(**values)
+        except ValidationError as e:
+            logger.error(f"Schema validation failed for {ElementTree.tostring(xml_tree, encoding='utf-8')}")
+            raise e
 
     return parse_element(xml_tree, schema)

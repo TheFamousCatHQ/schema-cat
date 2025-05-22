@@ -314,14 +314,44 @@ def xml_to_string(xml_tree: ElementTree.XML) -> str:
     return dom.toprettyxml(indent="  ")
 
 
+class XMLValidationError(Exception):
+    """Exception raised for errors during XML validation against a schema."""
+    pass
+
+
 def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
-    """Converts an ElementTree XML element to a Pydantic BaseModel instance."""
+    """
+    Converts an ElementTree XML element to a Pydantic BaseModel instance with enhanced validation.
+
+    Args:
+        xml_tree: The XML element to convert
+        schema: The Pydantic model class to convert to
+
+    Returns:
+        An instance of the Pydantic model
+
+    Raises:
+        XMLValidationError: If the XML doesn't match the expected schema
+        ValidationError: If the data doesn't validate against the Pydantic model
+    """
+    # Validate root tag
+    if xml_tree.tag != schema.__name__:
+        error_msg = f"XML validation error: Root tag mismatch. Got '{xml_tree.tag}', expected '{schema.__name__}'"
+        logger.error(error_msg)
+        raise XMLValidationError(f"XML validation error: Root tag mismatch. Expected '{schema.__name__}'.")
 
     def parse_element(elem, schema):
         values = {}
+        missing_required_fields = []
+        type_conversion_errors = {}
+
         for name, field in schema.model_fields.items():
             child = elem.find(name)
+            is_required = field.is_required()
+
             if child is None:
+                if is_required:
+                    missing_required_fields.append(name)
                 values[name] = None
                 continue
 
@@ -330,23 +360,37 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
 
             # Handle BaseModel
             if isinstance(field.annotation, type) and issubclass(field.annotation, BaseModel):
-                values[name] = parse_element(child, field.annotation)
+                try:
+                    values[name] = parse_element(child, field.annotation)
+                except Exception as e:
+                    logger.warning(f"Error parsing nested model '{name}': {str(e)}")
+                    if is_required:
+                        type_conversion_errors[name] = f"Failed to parse nested model: {str(e)}"
+                    values[name] = None
 
             # Handle List
             elif origin is list:
                 item_type = args[0]
                 values[name] = []
+                parse_errors = []
+
                 # For BaseModel items, look for elements with the item type name
                 if isinstance(item_type, type) and issubclass(item_type, BaseModel):
                     # First, check if the child element exists and has children
                     if child is not None and len(list(child)) > 0:
                         # If the child element has children, look for list items there
                         for item_elem in child.findall(item_type.__name__):
-                            values[name].append(parse_element(item_elem, item_type))
+                            try:
+                                values[name].append(parse_element(item_elem, item_type))
+                            except Exception as e:
+                                parse_errors.append(str(e))
                     else:
                         # Otherwise, look for list items directly under the parent element
                         for item_elem in elem.findall(item_type.__name__):
-                            values[name].append(parse_element(item_elem, item_type))
+                            try:
+                                values[name].append(parse_element(item_elem, item_type))
+                            except Exception as e:
+                                parse_errors.append(str(e))
                 else:
                     # For primitive types, look for elements with the field name or singular form
                     # First, check if the child element exists and has children
@@ -365,10 +409,16 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                         for item_elem in items:
                             values[name].append(item_elem.text)
 
+                if parse_errors and is_required and not values[name]:
+                    error_msg = "; ".join(parse_errors)
+                    type_conversion_errors[name] = f"Failed to parse list items: {error_msg}"
+
             # Handle Dict
             elif origin is dict:
                 values[name] = {}
                 key_type, value_type = args
+                parse_errors = []
+
                 # Look for item elements containing key-value pairs
                 for item_elem in child.findall('item'):
                     key_elem = item_elem.find('key')
@@ -378,27 +428,34 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                         key_text = key_elem.text
                         value_text = value_elem.text
 
-                        # Convert key to appropriate type
-                        if key_type is int:
-                            key_val = int(key_text)
-                        elif key_type is float:
-                            key_val = float(key_text)
-                        elif key_type is bool:
-                            key_val = key_text.lower() == "true"
-                        else:
-                            key_val = key_text
+                        try:
+                            # Convert key to appropriate type
+                            if key_type is int:
+                                key_val = int(key_text)
+                            elif key_type is float:
+                                key_val = float(key_text)
+                            elif key_type is bool:
+                                key_val = key_text.lower() == "true"
+                            else:
+                                key_val = key_text
 
-                        # Convert value to appropriate type
-                        if value_type is int:
-                            value_val = int(value_text)
-                        elif value_type is float:
-                            value_val = float(value_text)
-                        elif value_type is bool:
-                            value_val = value_text.lower() == "true"
-                        else:
-                            value_val = value_text
+                            # Convert value to appropriate type
+                            if value_type is int:
+                                value_val = int(value_text)
+                            elif value_type is float:
+                                value_val = float(value_text)
+                            elif value_type is bool:
+                                value_val = value_text.lower() == "true"
+                            else:
+                                value_val = value_text
 
-                        values[name][key_val] = value_val
+                            values[name][key_val] = value_val
+                        except (ValueError, TypeError) as e:
+                            parse_errors.append(f"Key-value pair conversion error: {str(e)}")
+
+                if parse_errors and is_required and not values[name]:
+                    error_msg = "; ".join(parse_errors)
+                    type_conversion_errors[name] = f"Failed to parse dictionary: {error_msg}"
 
             # Handle Union (including Optional)
             elif origin is Union:
@@ -411,6 +468,9 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                     continue
 
                 # Try each type in the Union until one works
+                union_errors = []
+                success = False
+
                 for arg in args:
                     if arg is type(None):
                         continue
@@ -478,39 +538,55 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                                 temp_values[name] = child.text
 
                         values[name] = temp_values[name]
+                        success = True
                         break
-                    except (ValueError, TypeError, ValidationError):
+                    except (ValueError, TypeError, ValidationError) as e:
+                        union_errors.append(f"{arg.__name__}: {str(e)}")
                         continue
 
                 # If we couldn't parse any type and it's Optional, set to None
-                if name not in values and is_optional:
-                    values[name] = None
+                if not success:
+                    if is_optional:
+                        values[name] = None
+                    elif is_required:
+                        error_msg = "; ".join(union_errors)
+                        type_conversion_errors[name] = f"Failed to parse union type: {error_msg}"
 
             # Handle Literal
             elif origin is Literal:
                 # Try to match the text with one of the literal values
                 text = child.text
+                literal_match_found = False
+
                 for arg in args:
                     try:
                         if isinstance(arg, str) and text == arg:
                             values[name] = arg
+                            literal_match_found = True
                             break
                         elif isinstance(arg, (int, float, bool)):
                             # Try to convert and compare
                             if isinstance(arg, int) and int(text) == arg:
                                 values[name] = arg
+                                literal_match_found = True
                                 break
                             elif isinstance(arg, float) and float(text) == arg:
                                 values[name] = arg
+                                literal_match_found = True
                                 break
                             elif isinstance(arg, bool) and (text.lower() == "true") == arg:
                                 values[name] = arg
+                                literal_match_found = True
                                 break
                     except (ValueError, TypeError):
                         continue
+
                 # If no match found, use the first literal value as default
-                if name not in values or values[name] is None:
-                    values[name] = args[0]
+                if not literal_match_found:
+                    if is_required:
+                        allowed_values = ", ".join([str(arg) for arg in args])
+                        type_conversion_errors[name] = f"Invalid literal value: '{text}'. Allowed values: {allowed_values}"
+                    values[name] = args[0]  # Default to first value
 
             # Handle primitive types
             else:
@@ -523,13 +599,42 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                         values[name] = child.text.lower() == "true"
                     else:
                         values[name] = child.text
-                except Exception:
+                except Exception as e:
                     # Fallback for invalid type (e.g., 'example' for int)
+                    if is_required:
+                        type_conversion_errors[name] = f"Type conversion error: {str(e)}"
                     values[name] = None
+
+        # Check for missing required fields and type conversion errors
+        if missing_required_fields or type_conversion_errors:
+            error_details = []
+
+            if missing_required_fields:
+                error_details.append(f"Missing required fields: {', '.join(missing_required_fields)}")
+
+            if type_conversion_errors:
+                for field_name, error in type_conversion_errors.items():
+                    error_details.append(f"Field '{field_name}': {error}")
+
+            error_msg = f"XML validation error in {schema.__name__}: {'; '.join(error_details)}"
+            logger.warning(error_msg)
+
+            # Continue with best effort if we have some values
+
         try:
             return schema(**values)
         except ValidationError as e:
-            logger.error(f"Schema validation failed for {ElementTree.tostring(xml_tree, encoding='utf-8')}")
-            raise e
+            error_msg = f"Schema validation failed for {schema.__name__}: {str(e)}"
+            logger.error(error_msg)
+
+            # Try to provide more context about the validation error
+            error_details = []
+            for error in e.errors():
+                field_path = ".".join(str(loc) for loc in error["loc"])
+                error_details.append(f"Field '{field_path}': {error['msg']}")
+
+            detailed_error = f"{error_msg}\nDetails: {'; '.join(error_details)}"
+            # Re-raise the original ValidationError to maintain compatibility
+            raise
 
     return parse_element(xml_tree, schema)

@@ -1,5 +1,5 @@
 import logging
-from typing import Type, TypeVar
+from typing import Type, TypeVar, Union, Dict, Literal, Optional, get_args, get_origin, Any
 from xml.etree import ElementTree
 from xml.etree.ElementTree import Element, tostring
 import re
@@ -24,9 +24,12 @@ def schema_to_xml(schema: Type[BaseModel]) -> ElementTree.XML:
     """Serializes a pydantic type to an example xml representation, always using field description if available (converted to TO_THIS_STYLE). Lists output two elements with the description as content. Does not instantiate the model."""
 
     def field_to_xml(key, field):
+        origin = get_origin(field.annotation)
+        args = get_args(field.annotation)
+
         # List handling
-        if hasattr(field.annotation, "__origin__") and field.annotation.__origin__ is list:
-            item_type = field.annotation.__args__[0]
+        if origin is list:
+            item_type = args[0]
             elem = ElementTree.Element(key)
             for _ in range(2):
                 # If item_type is a BaseModel, use its name for the child element
@@ -46,6 +49,224 @@ def schema_to_xml(schema: Type[BaseModel]) -> ElementTree.XML:
                         child.text = str(value)
                     elem.append(child)
             return elem
+
+        # Dict handling
+        if origin is dict:
+            key_type, value_type = args
+            elem = ElementTree.Element(key)
+            # Add example key-value pairs
+            for i in range(2):
+                key_elem = ElementTree.Element('key')
+                key_desc = f"example_key_{i+1}"
+                if key_type is str:
+                    key_elem.text = _wrap_cdata(key_desc)
+                else:
+                    key_elem.text = key_desc
+
+                value_elem = ElementTree.Element('value')
+                # Use appropriate example values based on the value type
+                if value_type is int:
+                    value_elem.text = str(i + 1)  # Simple integer values
+                elif value_type is float:
+                    value_elem.text = str(float(i + 1.5))  # Simple float values
+                elif value_type is bool:
+                    value_elem.text = str(i % 2 == 0).lower()  # Alternating boolean values
+                elif value_type is str:
+                    value_desc = getattr(field, 'description', None) or f"example_value_{i+1}"
+                    value_desc = to_this_style(value_desc)
+                    value_elem.text = _wrap_cdata(value_desc)
+                elif get_origin(value_type) is Union:
+                    # For Union types, use the first non-None type
+                    union_args = get_args(value_type)
+                    for arg in union_args:
+                        if arg is not type(None):
+                            if arg is int:
+                                value_elem.text = str(i + 1)
+                            elif arg is float:
+                                value_elem.text = str(float(i + 1.5))
+                            elif arg is bool:
+                                value_elem.text = str(i % 2 == 0).lower()
+                            else:  # Default to string
+                                value_desc = f"example_union_value_{i+1}"
+                                value_elem.text = _wrap_cdata(value_desc)
+                            break
+                else:
+                    # For other types, use a simple string representation
+                    value_desc = f"example_value_{i+1}"
+                    value_elem.text = value_desc
+
+                item_elem = ElementTree.Element('item')
+                item_elem.append(key_elem)
+                item_elem.append(value_elem)
+                elem.append(item_elem)
+            return elem
+
+        # Union handling (including Optional)
+        if origin is Union:
+            # For Optional (Union[T, None]), use the non-None type
+            if type(None) in args:
+                # Find the non-None type
+                for arg in args:
+                    if arg is not type(None):
+                        # Use the non-None type directly
+                        if isinstance(arg, type) and issubclass(arg, BaseModel):
+                            # Handle BaseModel type
+                            elem = ElementTree.Element(key)
+                            for n, f in arg.model_fields.items():
+                                child_elem = field_to_xml(n, f)
+                                elem.append(child_elem)
+                            return elem
+                        elif get_origin(arg) is list:
+                            # Handle list type
+                            item_type = get_args(arg)[0]
+                            elem = ElementTree.Element(key)
+                            for _ in range(2):
+                                if isinstance(item_type, type) and issubclass(item_type, BaseModel):
+                                    child = ElementTree.Element(item_type.__name__)
+                                    for n, f in item_type.model_fields.items():
+                                        grandchild = field_to_xml(n, f)
+                                        child.append(grandchild)
+                                    elem.append(child)
+                                else:
+                                    value = getattr(field, 'description', None) or 'example'
+                                    value = to_this_style(value)
+                                    child = ElementTree.Element(key[:-1] if key.endswith('s') else key)
+                                    if item_type is str:
+                                        child.text = _wrap_cdata(str(value))
+                                    else:
+                                        child.text = str(value)
+                                    elem.append(child)
+                            return elem
+                        elif get_origin(arg) is dict:
+                            # Handle dict type
+                            key_type, value_type = get_args(arg)
+                            elem = ElementTree.Element(key)
+                            for i in range(2):
+                                key_elem = ElementTree.Element('key')
+                                key_desc = f"example_key_{i+1}"
+                                if key_type is str:
+                                    key_elem.text = _wrap_cdata(key_desc)
+                                else:
+                                    key_elem.text = key_desc
+
+                                value_elem = ElementTree.Element('value')
+                                if value_type is int:
+                                    value_elem.text = str(i + 1)
+                                elif value_type is float:
+                                    value_elem.text = str(float(i + 1.5))
+                                elif value_type is bool:
+                                    value_elem.text = str(i % 2 == 0).lower()
+                                elif value_type is str:
+                                    value_desc = getattr(field, 'description', None) or f"example_value_{i+1}"
+                                    value_desc = to_this_style(value_desc)
+                                    value_elem.text = _wrap_cdata(value_desc)
+                                else:
+                                    value_desc = f"example_value_{i+1}"
+                                    value_elem.text = value_desc
+
+                                item_elem = ElementTree.Element('item')
+                                item_elem.append(key_elem)
+                                item_elem.append(value_elem)
+                                elem.append(item_elem)
+                            return elem
+                        else:
+                            # Handle primitive type
+                            elem = ElementTree.Element(key)
+                            desc_val = getattr(field, 'description', None)
+                            value = desc_val if desc_val is not None else 'example'
+                            value = to_this_style(value)
+                            if arg is str:
+                                elem.text = _wrap_cdata(str(value))
+                            else:
+                                elem.text = str(value)
+                            return elem
+            # For regular Union, use the first type as an example
+            else:
+                # Use the first type directly
+                arg = args[0]
+                if isinstance(arg, type) and issubclass(arg, BaseModel):
+                    # Handle BaseModel type
+                    elem = ElementTree.Element(key)
+                    for n, f in arg.model_fields.items():
+                        child_elem = field_to_xml(n, f)
+                        elem.append(child_elem)
+                    return elem
+                elif get_origin(arg) is list:
+                    # Handle list type
+                    item_type = get_args(arg)[0]
+                    elem = ElementTree.Element(key)
+                    for _ in range(2):
+                        if isinstance(item_type, type) and issubclass(item_type, BaseModel):
+                            child = ElementTree.Element(item_type.__name__)
+                            for n, f in item_type.model_fields.items():
+                                grandchild = field_to_xml(n, f)
+                                child.append(grandchild)
+                            elem.append(child)
+                        else:
+                            value = getattr(field, 'description', None) or 'example'
+                            value = to_this_style(value)
+                            child = ElementTree.Element(key[:-1] if key.endswith('s') else key)
+                            if item_type is str:
+                                child.text = _wrap_cdata(str(value))
+                            else:
+                                child.text = str(value)
+                            elem.append(child)
+                    return elem
+                elif get_origin(arg) is dict:
+                    # Handle dict type
+                    key_type, value_type = get_args(arg)
+                    elem = ElementTree.Element(key)
+                    for i in range(2):
+                        key_elem = ElementTree.Element('key')
+                        key_desc = f"example_key_{i+1}"
+                        if key_type is str:
+                            key_elem.text = _wrap_cdata(key_desc)
+                        else:
+                            key_elem.text = key_desc
+
+                        value_elem = ElementTree.Element('value')
+                        if value_type is int:
+                            value_elem.text = str(i + 1)
+                        elif value_type is float:
+                            value_elem.text = str(float(i + 1.5))
+                        elif value_type is bool:
+                            value_elem.text = str(i % 2 == 0).lower()
+                        elif value_type is str:
+                            value_desc = getattr(field, 'description', None) or f"example_value_{i+1}"
+                            value_desc = to_this_style(value_desc)
+                            value_elem.text = _wrap_cdata(value_desc)
+                        else:
+                            value_desc = f"example_value_{i+1}"
+                            value_elem.text = value_desc
+
+                        item_elem = ElementTree.Element('item')
+                        item_elem.append(key_elem)
+                        item_elem.append(value_elem)
+                        elem.append(item_elem)
+                    return elem
+                else:
+                    # Handle primitive type
+                    elem = ElementTree.Element(key)
+                    desc_val = getattr(field, 'description', None)
+                    value = desc_val if desc_val is not None else 'example'
+                    value = to_this_style(value)
+                    if arg is str:
+                        elem.text = _wrap_cdata(str(value))
+                    else:
+                        elem.text = str(value)
+                    return elem
+
+        # Literal handling
+        if origin is Literal:
+            elem = ElementTree.Element(key)
+            # Use the first literal value as an example
+            value = str(args[0])
+            if isinstance(args[0], str):
+                elem.text = _wrap_cdata(value)
+            else:
+                elem.text = value
+            return elem
+
         # Nested model
         if isinstance(field.annotation, type) and issubclass(field.annotation, BaseModel):
             elem = ElementTree.Element(key)
@@ -53,6 +274,7 @@ def schema_to_xml(schema: Type[BaseModel]) -> ElementTree.XML:
                 child_elem = field_to_xml(n, f)
                 elem.append(child_elem)
             return elem
+
         # Leaf field
         desc_val = getattr(field, 'description', None)
         value = desc_val if desc_val is not None else 'example'
@@ -102,10 +324,17 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
             if child is None:
                 values[name] = None
                 continue
+
+            origin = get_origin(field.annotation)
+            args = get_args(field.annotation)
+
+            # Handle BaseModel
             if isinstance(field.annotation, type) and issubclass(field.annotation, BaseModel):
                 values[name] = parse_element(child, field.annotation)
-            elif hasattr(field.annotation, "__origin__") and field.annotation.__origin__ is list:
-                item_type = field.annotation.__args__[0]
+
+            # Handle List
+            elif origin is list:
+                item_type = args[0]
                 values[name] = []
                 # For BaseModel items, look for elements with the item type name
                 if isinstance(item_type, type) and issubclass(item_type, BaseModel):
@@ -135,6 +364,155 @@ def xml_to_base_model(xml_tree: ElementTree.XML, schema: Type[T]) -> T:
                             items = elem.findall(name[:-1])
                         for item_elem in items:
                             values[name].append(item_elem.text)
+
+            # Handle Dict
+            elif origin is dict:
+                values[name] = {}
+                key_type, value_type = args
+                # Look for item elements containing key-value pairs
+                for item_elem in child.findall('item'):
+                    key_elem = item_elem.find('key')
+                    value_elem = item_elem.find('value')
+
+                    if key_elem is not None and value_elem is not None:
+                        key_text = key_elem.text
+                        value_text = value_elem.text
+
+                        # Convert key to appropriate type
+                        if key_type is int:
+                            key_val = int(key_text)
+                        elif key_type is float:
+                            key_val = float(key_text)
+                        elif key_type is bool:
+                            key_val = key_text.lower() == "true"
+                        else:
+                            key_val = key_text
+
+                        # Convert value to appropriate type
+                        if value_type is int:
+                            value_val = int(value_text)
+                        elif value_type is float:
+                            value_val = float(value_text)
+                        elif value_type is bool:
+                            value_val = value_text.lower() == "true"
+                        else:
+                            value_val = value_text
+
+                        values[name][key_val] = value_val
+
+            # Handle Union (including Optional)
+            elif origin is Union:
+                # Check if this is an Optional type (Union with None)
+                is_optional = type(None) in args
+
+                # If it's an Optional field with a default value of None, and the XML element is empty or has no content
+                if is_optional and (child is None or (child.text is None and len(list(child)) == 0)):
+                    values[name] = None
+                    continue
+
+                # Try each type in the Union until one works
+                for arg in args:
+                    if arg is type(None):
+                        continue
+                    try:
+                        temp_values = {}
+
+                        if isinstance(arg, type) and issubclass(arg, BaseModel):
+                            temp_values[name] = parse_element(child, arg)
+                        elif get_origin(arg) is list:
+                            # Handle list type within Union
+                            # Create a temporary schema for parsing
+                            class TempModel(BaseModel):
+                                temp_field: arg
+                            # Parse using the temporary schema
+                            temp_elem = ElementTree.Element('TempModel')
+                            temp_elem.append(child)
+                            temp_model = parse_element(temp_elem, TempModel)
+                            temp_values[name] = temp_model.temp_field
+                        elif get_origin(arg) is dict:
+                            # Handle dict type within Union
+                            key_type, value_type = get_args(arg)
+                            temp_dict = {}
+
+                            # Look for item elements containing key-value pairs
+                            for item_elem in child.findall('item'):
+                                key_elem = item_elem.find('key')
+                                value_elem = item_elem.find('value')
+
+                                if key_elem is not None and value_elem is not None:
+                                    key_text = key_elem.text
+                                    value_text = value_elem.text
+
+                                    # Convert key to appropriate type
+                                    if key_type is int:
+                                        key_val = int(key_text)
+                                    elif key_type is float:
+                                        key_val = float(key_text)
+                                    elif key_type is bool:
+                                        key_val = key_text.lower() == "true"
+                                    else:
+                                        key_val = key_text
+
+                                    # Convert value to appropriate type
+                                    if value_type is int:
+                                        value_val = int(value_text)
+                                    elif value_type is float:
+                                        value_val = float(value_text)
+                                    elif value_type is bool:
+                                        value_val = value_text.lower() == "true"
+                                    else:
+                                        value_val = value_text
+
+                                    temp_dict[key_val] = value_val
+
+                            temp_values[name] = temp_dict
+                        else:
+                            # Handle primitive types
+                            if arg is int:
+                                temp_values[name] = int(child.text)
+                            elif arg is float:
+                                temp_values[name] = float(child.text)
+                            elif arg is bool:
+                                temp_values[name] = child.text.lower() == "true"
+                            else:
+                                temp_values[name] = child.text
+
+                        values[name] = temp_values[name]
+                        break
+                    except (ValueError, TypeError, ValidationError):
+                        continue
+
+                # If we couldn't parse any type and it's Optional, set to None
+                if name not in values and is_optional:
+                    values[name] = None
+
+            # Handle Literal
+            elif origin is Literal:
+                # Try to match the text with one of the literal values
+                text = child.text
+                for arg in args:
+                    try:
+                        if isinstance(arg, str) and text == arg:
+                            values[name] = arg
+                            break
+                        elif isinstance(arg, (int, float, bool)):
+                            # Try to convert and compare
+                            if isinstance(arg, int) and int(text) == arg:
+                                values[name] = arg
+                                break
+                            elif isinstance(arg, float) and float(text) == arg:
+                                values[name] = arg
+                                break
+                            elif isinstance(arg, bool) and (text.lower() == "true") == arg:
+                                values[name] = arg
+                                break
+                    except (ValueError, TypeError):
+                        continue
+                # If no match found, use the first literal value as default
+                if name not in values or values[name] is None:
+                    values[name] = args[0]
+
+            # Handle primitive types
             else:
                 try:
                     if field.annotation is int:

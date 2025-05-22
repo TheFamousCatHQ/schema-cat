@@ -114,7 +114,7 @@ class E2ESimpleModel(BaseModel):
 async def test_prompt_with_schema_openrouter_e2e():
     prompt = "Return foo as 'hello' and bar as 42."
     model = "google/gemma-3-4b-it"  # Use a model you have access to
-    result = await prompt_with_schema(prompt, E2ESimpleModel, model, Provider.OPENROUTER)
+    result = await prompt_with_schema(prompt, E2ESimpleModel, model)
     assert isinstance(result, E2ESimpleModel)
     assert isinstance(result.foo, str)
     assert isinstance(result.bar, int)
@@ -125,7 +125,7 @@ async def test_prompt_with_schema_openrouter_e2e():
 async def test_prompt_with_schema_openai_e2e():
     prompt = "Return foo as 'world' and bar as 99."
     model = "gpt-4.1-nano-2025-04-14"  # Use a model you have access to
-    result = await prompt_with_schema(prompt, E2ESimpleModel, model, Provider.OPENAI)
+    result = await prompt_with_schema(prompt, E2ESimpleModel, model)
     assert isinstance(result, E2ESimpleModel)
     assert isinstance(result.foo, str)
     assert isinstance(result.bar, int)
@@ -135,8 +135,8 @@ async def test_prompt_with_schema_openai_e2e():
 @pytest.mark.slow
 async def test_prompt_with_schema_anthropic_e2e():
     prompt = "Return foo as 'anthropic' and bar as 123."
-    model = "claude-3-5-haiku-20241022"  # Use a model you have access to
-    result = await prompt_with_schema(prompt, E2ESimpleModel, model, Provider.ANTHROPIC)
+    model = "claude-3-5-haiku-latest"  # Use a model you have access to
+    result = await prompt_with_schema(prompt, E2ESimpleModel, model)
     assert isinstance(result, E2ESimpleModel)
     assert isinstance(result.foo, str)
     assert isinstance(result.bar, int)

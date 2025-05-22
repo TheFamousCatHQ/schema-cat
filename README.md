@@ -92,7 +92,7 @@ She has two addresses:
 """
 
 async def main():
-    result = await prompt_with_schema(prompt, Person, "gpt-4-turbo", Provider.OPENAI)
+    result = await prompt_with_schema(prompt, Person, "gpt-4o")
     print(f"Name: {result.name}")
     print(f"Age: {result.age}")
     print(f"Addresses:")

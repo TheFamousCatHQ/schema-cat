@@ -8,7 +8,9 @@ from pydantic import BaseModel
 from schema_cat.anthropic import call_anthropic
 from schema_cat.openai import call_openai
 from schema_cat.openrouter import call_openrouter
-from schema_cat.provider import Provider, _provider_api_key_available, MODEL_PROVIDER_MAP, get_provider_and_model
+from schema_cat.provider_enum import Provider, _provider_api_key_available
+from schema_cat.model_providers import MODEL_PROVIDER_MAP
+from schema_cat.provider import get_provider_and_model
 from schema_cat.schema import schema_to_xml, xml_to_string, xml_to_base_model
 from schema_cat.retry import with_retry, retry_with_exponential_backoff
 

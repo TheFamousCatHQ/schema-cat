@@ -6,16 +6,21 @@ import httpx
 
 from schema_cat.xml import xml_from_string
 from schema_cat.prompt import build_system_prompt
+from schema_cat.retry import with_retry
 
 logger = logging.getLogger("schema_cat")
 
 
+@with_retry()
 async def call_openrouter(model: str,
                           sys_prompt: str,
                           user_prompt: str,
                           xml_schema: str,
                           max_tokens: int = 8192,
-                          temperature: float = 0.0) -> ElementTree.XML:
+                          temperature: float = 0.0,
+                          max_retries: int = 5,
+                          initial_delay: float = 1.0,
+                          max_delay: float = 60.0) -> ElementTree.XML:
     api_key = os.getenv("OPENROUTER_API_KEY")
     base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 

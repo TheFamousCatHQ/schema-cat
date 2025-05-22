@@ -9,6 +9,7 @@ Published by [The Famous Cat](https://www.thefamouscat.com).
 - Define response structures using Pydantic models
 - Automatically convert Pydantic models to XML schemas
 - Parse LLM responses back into Pydantic models
+- Built-in retry mechanism with exponential backoff for handling rate limits and transient errors
 - Support for multiple LLM providers:
   - OpenAI
   - Anthropic
@@ -104,14 +105,19 @@ asyncio.run(main())
 
 ## API Reference
 
-### `prompt_with_schema(prompt: str, schema: Type[T], model: str, provider: Provider) -> T`
+### `prompt_with_schema(prompt: str, schema: Type[T], model: str, max_tokens: int = 8192, temperature: float = 0.0, sys_prompt: str = "", max_retries: int = 5, initial_delay: float = 1.0, max_delay: float = 60.0) -> T`
 
 Makes a request to an LLM provider with a prompt and schema, returning a structured response.
 
 - `prompt`: The prompt to send to the LLM
 - `schema`: A Pydantic model class defining the expected response structure
 - `model`: The LLM model to use (e.g., "gpt-4-turbo", "claude-3-haiku")
-- `provider`: The LLM provider to use (Provider.OPENAI, Provider.ANTHROPIC, or Provider.OPENROUTER)
+- `max_tokens`: Maximum number of tokens to generate (default: 8192)
+- `temperature`: Sampling temperature (0.0 to 1.0, default: 0.0)
+- `sys_prompt`: Optional system prompt to prepend (default: "")
+- `max_retries`: Maximum number of retries for API calls (default: 5)
+- `initial_delay`: Initial delay between retries in seconds (default: 1.0)
+- `max_delay`: Maximum delay between retries in seconds (default: 60.0)
 
 ### `schema_to_xml(schema: Type[BaseModel]) -> ElementTree.XML`
 
@@ -144,6 +150,42 @@ Install dependencies with Poetry:
 ```bash
 poetry install
 ```
+
+## Retry Mechanism
+
+Schema-cat includes a built-in retry mechanism with exponential backoff to handle rate limits and transient errors when making API calls to LLM providers. This helps improve the reliability of your application by automatically retrying failed requests.
+
+### How It Works
+
+When an API call fails with a retryable error (such as a network error or rate limit), schema-cat will:
+
+1. Wait for a short delay
+2. Retry the API call
+3. If it fails again, wait for a longer delay (exponential backoff)
+4. Continue retrying until the call succeeds or the maximum number of retries is reached
+
+### Configuration
+
+You can configure the retry behavior using the following parameters in `prompt_with_schema`:
+
+```python
+result = await prompt_with_schema(
+    prompt="Your prompt",
+    schema=YourSchema,
+    model="gpt-4-turbo",
+    max_retries=5,           # Maximum number of retry attempts
+    initial_delay=1.0,       # Initial delay between retries in seconds
+    max_delay=60.0           # Maximum delay between retries in seconds
+)
+```
+
+### Retryable Errors
+
+By default, the retry mechanism handles common errors such as:
+
+- Network errors (ConnectionError, TimeoutError)
+- HTTP client errors (httpx.ConnectError, httpx.ReadTimeout, etc.)
+- Provider-specific errors (openai.RateLimitError, anthropic.RateLimitError, etc.)
 
 ### Running Tests
 

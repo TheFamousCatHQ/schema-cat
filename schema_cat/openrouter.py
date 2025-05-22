@@ -38,7 +38,7 @@ async def call_openrouter(model: str,
         "Content-Type": "application/json"
     }
 
-    logger.info(f"Calling OpenRouter API directly with model {model}")
+    logger.info(f"Calling OpenRouter API with model {model}")
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{base_url}/chat/completions",

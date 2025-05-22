@@ -1,5 +1,6 @@
 import os
 from enum import Enum
+import re
 
 from schema_cat.anthropic import call_anthropic
 from schema_cat.openai import call_openai
@@ -79,13 +80,13 @@ MODEL_PROVIDER_MAP = {
     "claude-3.5-sonnet": [
         (
             Provider.ANTHROPIC,
-            "claude-3-5-sonnet-latest",
+            "claude-3.5-sonnet-latest",
         ),  # Docstring reference in create_agent
         (Provider.OPENROUTER, "anthropic/claude-3.5-sonnet"),
         (Provider.OPENAI, "anthropic/gpt-4.1-mini"),
     ],
     "anthropic/claude-3.5-sonnet": [
-        (Provider.ANTHROPIC, "claude-3-5-sonnet-latest"),
+        (Provider.ANTHROPIC, "claude-3.5-sonnet-latest"),
         (Provider.OPENROUTER, "anthropic/claude-3.5-sonnet"),
         (Provider.OPENAI, "anthropic/gpt-4.1-mini"),
     ],
@@ -109,8 +110,8 @@ MODEL_PROVIDER_MAP = {
 
 
 def _normalize_model_name(name: str) -> str:
-    # Normalize by replacing -, _, . with a common character (e.g., .)
-    return name.replace("-", ".").replace("_", ".")
+    # Remove all non-alphanumeric characters and lowercase
+    return re.sub(r"[^a-zA-Z0-9]", "", name).lower()
 
 
 def get_provider_and_model(model_name: str) -> tuple[Provider, str]:
@@ -133,7 +134,7 @@ def get_provider_and_model(model_name: str) -> tuple[Provider, str]:
         for canonical, candidates in MODEL_PROVIDER_MAP.items():
             for cand_provider, cand_model in candidates:
                 if cand_model == model_name and _provider_api_key_available(
-                        cand_provider
+                    cand_provider
                 ):
                     return cand_provider, cand_model
         # Try canonical fallback by canonical name
@@ -145,17 +146,17 @@ def get_provider_and_model(model_name: str) -> tuple[Provider, str]:
             f"No available provider for provider-specific model '{model_name}'"
         )
     else:
-        candidates = MODEL_PROVIDER_MAP.get(model_name, [])
-        for provider, provider_model in candidates:
-            if _provider_api_key_available(provider):
-                return provider, provider_model
-        # Deep search: look for normalized model_name in all values
         norm_model_name = _normalize_model_name(model_name)
+        # Canonical: use priority order in MODEL_PROVIDER_MAP
+        for key, candidates in MODEL_PROVIDER_MAP.items():
+            if _normalize_model_name(key) == norm_model_name:
+                for provider, provider_model in candidates:
+                    if _provider_api_key_available(provider):
+                        return provider, provider_model
+        # Deep search: look for normalized model_name in all values
         for candidates in MODEL_PROVIDER_MAP.values():
             for provider, provider_model in candidates:
-                if _normalize_model_name(
-                        provider_model
-                ) == norm_model_name and _provider_api_key_available(provider):
+                if _normalize_model_name(provider_model) == norm_model_name and _provider_api_key_available(provider):
                     return provider, provider_model
         raise ValueError(
             f"No available provider/model for canonical model '{model_name}'"

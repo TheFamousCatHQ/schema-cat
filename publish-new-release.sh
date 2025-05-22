@@ -3,4 +3,4 @@
 set -e
 poetry run check-and-build
 poetry publish
-poetry run bump-version
+poetry run bump-version patch

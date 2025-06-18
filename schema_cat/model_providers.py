@@ -77,3 +77,34 @@ MODEL_PROVIDER_MAP = {
         (Provider.OPENROUTER, "anthropic/claude-sonnet-4")
     ]
 }
+
+
+def get_model_name_by_common_name_and_provider(common_name: str, provider: Provider) -> str:
+    """
+    Get the actual model name for a given common name and provider.
+
+    Args:
+        common_name: The common/canonical model name (e.g., "gpt-4.1-mini", "claude-3.5-sonnet")
+        provider: The provider enum value (Provider.OPENAI, Provider.ANTHROPIC, Provider.OPENROUTER)
+
+    Returns:
+        The actual model name to use with the specified provider
+
+    Raises:
+        ValueError: If the common name is not found or the provider is not available for that model
+    """
+    if common_name not in MODEL_PROVIDER_MAP:
+        raise ValueError(f"Common name '{common_name}' not found in model provider map")
+
+    provider_options = MODEL_PROVIDER_MAP[common_name]
+
+    for provider_option, model_name in provider_options:
+        if provider_option == provider:
+            return model_name
+
+    # If we get here, the provider was not found for this common name
+    available_providers = [p.value for p, _ in provider_options]
+    raise ValueError(
+        f"Provider '{provider.value}' not available for common name '{common_name}'. "
+        f"Available providers: {available_providers}"
+    )

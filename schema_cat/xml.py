@@ -1,11 +1,11 @@
-import re
 import logging
+import re
+import warnings
+from typing import Optional, Tuple
 from xml.etree import ElementTree
 from xml.parsers.expat import ExpatError
-from typing import Optional, Tuple
 
 from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
-import warnings
 
 logger = logging.getLogger("schema_cat")
 

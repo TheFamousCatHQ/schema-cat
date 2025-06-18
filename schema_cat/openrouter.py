@@ -4,9 +4,9 @@ from xml.etree import ElementTree
 
 import httpx
 
-from schema_cat.xml import xml_from_string
 from schema_cat.prompt import build_system_prompt
 from schema_cat.retry import with_retry
+from schema_cat.xml import xml_from_string, XMLParsingError
 
 logger = logging.getLogger("schema_cat")
 
@@ -58,6 +58,20 @@ async def call_openrouter(model: str,
     logger.debug(f"Raw response content: {content}")
 
     # Parse the response content as XML
-    root = xml_from_string(content)
-    logger.debug("Successfully parsed response as XML")
-    return root
+    try:
+        root = xml_from_string(content)
+        logger.debug("Successfully parsed response as XML")
+        return root
+    except XMLParsingError as e:
+        if max_retries > 0:
+            from schema_cat import Provider
+            from schema_cat.model_providers import get_model_name_by_common_name_and_provider
+            return call_openrouter(prompt=content,
+                                   sys_prompt="Convert this data into valid XML according to the schema",
+                                   schema=xml_schema,
+                                   model=get_model_name_by_common_name_and_provider("claude-haiku",
+                                                                                    Provider.OPENROUTER),
+                                   max_retries=0
+                                   )
+        else:
+            raise e

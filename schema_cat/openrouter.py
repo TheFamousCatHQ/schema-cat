@@ -66,9 +66,9 @@ async def call_openrouter(model: str,
         if max_retries > 0:
             from schema_cat import Provider
             from schema_cat.model_providers import get_model_name_by_common_name_and_provider
-            return await call_openrouter(prompt=content,
+            return await call_openrouter(user_prompt=content,
                                          sys_prompt="Convert this data into valid XML according to the schema",
-                                         schema=xml_schema,
+                                         xml_schema=xml_schema,
                                          model=get_model_name_by_common_name_and_provider("claude-haiku",
                                                                                           Provider.OPENROUTER),
                                          max_retries=0

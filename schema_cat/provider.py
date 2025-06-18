@@ -1,7 +1,7 @@
 import re
 
-from schema_cat.provider_enum import Provider, _provider_api_key_available
 from schema_cat.model_providers import MODEL_PROVIDER_MAP
+from schema_cat.provider_enum import Provider, _provider_api_key_available
 
 
 def _normalize_model_name(name: str) -> str:
@@ -29,7 +29,7 @@ def get_provider_and_model(model_name: str) -> tuple[Provider, str]:
         for canonical, candidates in MODEL_PROVIDER_MAP.items():
             for cand_provider, cand_model in candidates:
                 if cand_model == model_name and _provider_api_key_available(
-                    cand_provider
+                        cand_provider
                 ):
                     return cand_provider, cand_model
         # Try canonical fallback by canonical name

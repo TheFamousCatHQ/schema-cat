@@ -59,7 +59,7 @@ MODEL_PROVIDER_MAP = {
     # Existing entries
     "claude-haiku": [
         (Provider.ANTHROPIC, "claude-3-haiku-20240307"),
-        (Provider.OPENROUTER, "openrouter/claude-3-haiku-20240307"),
+        (Provider.OPENROUTER, "anthropic/claude-3-haiku-20240307"),
         (Provider.OPENAI, "gpt-4.1-nano"),  # fallback to a similar OpenAI model
     ],
     "anthropic/claude-3.5-haiku": [

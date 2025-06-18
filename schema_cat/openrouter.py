@@ -69,7 +69,7 @@ async def call_openrouter(model: str,
             return await call_openrouter(user_prompt=content,
                                          sys_prompt="Convert this data into valid XML according to the schema",
                                          xml_schema=xml_schema,
-                                         model=get_model_name_by_common_name_and_provider("claude-haiku",
+                                         model=get_model_name_by_common_name_and_provider("anthropic/claude-3.5-haiku",
                                                                                           Provider.OPENROUTER),
                                          max_retries=0
                                          )

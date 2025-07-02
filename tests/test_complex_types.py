@@ -1,9 +1,9 @@
-import pytest
 from typing import Union, Optional, Dict, Literal
+
 from pydantic import BaseModel, Field
 
 from schema_cat import schema_to_xml, xml_to_string, xml_to_base_model
-from tests.test_schema_to_xml import xml_to_dict, strip_cdata
+from tests.test_schema_to_xml import xml_to_dict
 
 
 class UnionModel(BaseModel):

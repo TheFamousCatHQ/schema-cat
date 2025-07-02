@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel, Field
 
-from schema_cat import schema_to_xml, xml_to_string, prompt_with_schema, Provider
+from schema_cat import schema_to_xml, xml_to_string, prompt_with_schema
 
 
 def strip_cdata(text):

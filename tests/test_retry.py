@@ -1,7 +1,7 @@
-import pytest
-import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
+
 import httpx
+import pytest
 
 from schema_cat.retry import retry_with_exponential_backoff, with_retry
 
@@ -158,8 +158,8 @@ async def test_retry_with_httpx_error():
 # Test integration with provider functions (mocked)
 @pytest.mark.asyncio
 async def test_openai_provider_retry():
-    """Test that the OpenAI provider function retries correctly."""
-    from schema_cat.openai import call_openai
+    """Test that the OpenAI provider retries correctly."""
+    from schema_cat.provider_enum import Provider
     from xml.etree import ElementTree
 
     # Mock the OpenAI client
@@ -175,7 +175,7 @@ async def test_openai_provider_retry():
     with patch("openai.AsyncOpenAI", return_value=mock_client), \
          patch("schema_cat.xml.xml_from_string", return_value=mock_xml):
 
-        result = await call_openai(
+        result = await Provider.OPENAI.call(
             "gpt-4",
             "System prompt",
             "User prompt",

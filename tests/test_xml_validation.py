@@ -1,11 +1,10 @@
-import pytest
-from pydantic import BaseModel, Field
-from xml.etree import ElementTree
-import re
 from typing import List, Optional
 
-from schema_cat.xml import xml_from_string
+import pytest
+from pydantic import BaseModel
+
 from schema_cat.schema import xml_to_base_model
+from schema_cat.xml import xml_from_string
 
 
 class SimpleModel(BaseModel):

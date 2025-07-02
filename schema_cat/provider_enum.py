@@ -1,9 +1,7 @@
 import os
 from enum import Enum
 
-from schema_cat.anthropic import call_anthropic
-from schema_cat.openai import call_openai
-from schema_cat.openrouter import call_openrouter
+from schema_cat.providers import OpenRouterProvider, OpenAIProvider, AnthropicProvider
 
 
 class Provider(str, Enum):
@@ -14,11 +12,11 @@ class Provider(str, Enum):
     @property
     def call(self):
         if self == Provider.OPENROUTER:
-            return call_openrouter
+            return OpenRouterProvider().call
         elif self == Provider.OPENAI:
-            return call_openai
+            return OpenAIProvider().call
         elif self == Provider.ANTHROPIC:
-            return call_anthropic
+            return AnthropicProvider().call
         else:
             raise NotImplementedError(f"No call method for provider {self}")
 

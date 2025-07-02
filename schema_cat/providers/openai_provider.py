@@ -3,16 +3,16 @@ import os
 from xml.etree import ElementTree
 
 from schema_cat.base_provider import BaseProvider
-from schema_cat.xml import xml_from_string
 from schema_cat.prompt import build_system_prompt
 from schema_cat.retry import with_retry
+from schema_cat.xml import xml_from_string
 
-logger = logging.getLogger("schema_cat")
+logger = logging.getLogger("schema_cat.openai")
 
 
 class OpenAIProvider(BaseProvider):
     """OpenAI provider implementation."""
-    
+
     @with_retry()
     async def call(self,
                    model: str,

@@ -7,7 +7,7 @@ from schema_cat.xml import xml_from_string
 from schema_cat.prompt import build_system_prompt
 from schema_cat.retry import with_retry
 
-logger = logging.getLogger("schema_cat")
+logger = logging.getLogger("schema_cat.anthropic")
 
 
 class AnthropicProvider(BaseProvider):

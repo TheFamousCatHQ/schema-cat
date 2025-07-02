@@ -4,7 +4,7 @@ from xml.etree import ElementTree
 
 class BaseProvider(ABC):
     """Abstract base class for all providers."""
-    
+
     @abstractmethod
     async def call(self,
                    model: str,

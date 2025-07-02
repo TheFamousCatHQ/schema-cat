@@ -1,7 +1,7 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from xml.etree import ElementTree
-import httpx
+
+import pytest
 
 from schema_cat.providers import OpenAIProvider, OpenRouterProvider, AnthropicProvider
 from schema_cat.xml import XMLParsingError

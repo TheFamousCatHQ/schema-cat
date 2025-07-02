@@ -1,6 +1,7 @@
 import logging
 import os
 from xml.etree import ElementTree
+from typing import List, Dict, Any
 
 from schema_cat.base_provider import BaseProvider
 from schema_cat.prompt import build_system_prompt
@@ -46,3 +47,37 @@ class OpenAIProvider(BaseProvider):
         root = xml_from_string(content)
         logger.debug("Successfully parsed response as XML")
         return root
+
+    async def get_available_models(self) -> List[Dict[str, Any]]:
+        """
+        Retrieve all available models from OpenAI's API.
+
+        Returns:
+            List of model dictionaries containing model information.
+        """
+        import openai
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.warning("OPENAI_API_KEY not found, cannot retrieve models")
+            return []
+
+        base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+        try:
+            models_response = await client.models.list()
+            models = []
+            for model in models_response.data:
+                model_dict = {
+                    'id': model.id,
+                    'object': model.object,
+                    'created': getattr(model, 'created', None),
+                    'owned_by': getattr(model, 'owned_by', None)
+                }
+                models.append(model_dict)
+
+            logger.info(f"Retrieved {len(models)} models from OpenAI")
+            return models
+        except Exception as e:
+            logger.error(f"Failed to retrieve models from OpenAI: {e}")
+            return []

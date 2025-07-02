@@ -52,7 +52,7 @@ class OpenAiCompatProvider(BaseProvider, ABC):
             "Content-Type": "application/json"
         }
 
-        logger.info(f"Calling OpenRouter API with model {model}")
+        logger.info(f"Calling OpenAI compatible API with model {model}")
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{base_url}/chat/completions",

@@ -1,6 +1,7 @@
 import logging
 import os
 from xml.etree import ElementTree
+from typing import List, Dict, Any
 
 from schema_cat.base_provider import BaseProvider
 from schema_cat.xml import xml_from_string
@@ -12,7 +13,7 @@ logger = logging.getLogger("schema_cat.anthropic")
 
 class AnthropicProvider(BaseProvider):
     """Anthropic provider implementation."""
-    
+
     @with_retry()
     async def call(self,
                    model: str,
@@ -42,3 +43,74 @@ class AnthropicProvider(BaseProvider):
         root = xml_from_string(content)
         logger.debug("Successfully parsed response as XML")
         return root
+
+    async def get_available_models(self) -> List[Dict[str, Any]]:
+        """
+        Retrieve available models from Anthropic.
+
+        Note: Anthropic doesn't provide a public models API endpoint,
+        so we return a hardcoded list of known models.
+
+        Returns:
+            List of model dictionaries containing model information.
+        """
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            logger.warning("ANTHROPIC_API_KEY not found, cannot retrieve models")
+            return []
+
+        # Hardcoded list of known Anthropic models
+        # This should be updated as new models become available
+        known_models = [
+            {
+                'id': 'claude-3-5-sonnet-20241022',
+                'object': 'model',
+                'owned_by': 'anthropic',
+                'context_length': 200000
+            },
+            {
+                'id': 'claude-3-5-sonnet-latest',
+                'object': 'model',
+                'owned_by': 'anthropic',
+                'context_length': 200000
+            },
+            {
+                'id': 'claude-3-5-haiku-20241022',
+                'object': 'model',
+                'owned_by': 'anthropic',
+                'context_length': 200000
+            },
+            {
+                'id': 'claude-3-5-haiku-latest',
+                'object': 'model',
+                'owned_by': 'anthropic',
+                'context_length': 200000
+            },
+            {
+                'id': 'claude-3-opus-20240229',
+                'object': 'model',
+                'owned_by': 'anthropic',
+                'context_length': 200000
+            },
+            {
+                'id': 'claude-3-sonnet-20240229',
+                'object': 'model',
+                'owned_by': 'anthropic',
+                'context_length': 200000
+            },
+            {
+                'id': 'claude-3-haiku-20240307',
+                'object': 'model',
+                'owned_by': 'anthropic',
+                'context_length': 200000
+            },
+            {
+                'id': 'claude-sonnet-4-20250514',
+                'object': 'model',
+                'owned_by': 'anthropic',
+                'context_length': 200000
+            }
+        ]
+
+        logger.info(f"Retrieved {len(known_models)} known models from Anthropic")
+        return known_models

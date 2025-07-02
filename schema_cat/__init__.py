@@ -11,7 +11,8 @@ from schema_cat.provider_enum import Provider, _provider_api_key_available
 from schema_cat.retry import with_retry, retry_with_exponential_backoff
 from schema_cat.schema import schema_to_xml, xml_to_string, xml_to_base_model
 from schema_cat.model_registry import (
-    ModelRequirements, RoutingStrategy, RequestContext, get_global_registry, get_global_matcher
+    ModelRequirements, RoutingStrategy, RequestContext, get_global_registry, get_global_matcher,
+    discover_and_register_models
 )
 from schema_cat.model_router import get_global_router, RouterConfig, configure_global_router
 
@@ -193,6 +194,7 @@ __all__ = [
     'validate_model_availability',
     'configure_routing',
     'load_config_from_file',
+    'discover_and_register_models',
 
     # Classes and enums
     'Provider',

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from xml.etree import ElementTree
+from typing import List, Dict, Any
 
 
 class BaseProvider(ABC):
@@ -18,7 +19,7 @@ class BaseProvider(ABC):
                    max_delay: float = 60.0) -> ElementTree.XML:
         """
         Make a call to the provider's API.
-        
+
         Args:
             model: The model name to use
             sys_prompt: System prompt
@@ -29,8 +30,22 @@ class BaseProvider(ABC):
             max_retries: Maximum number of retries
             initial_delay: Initial delay for retries
             max_delay: Maximum delay for retries
-            
+
         Returns:
             Parsed XML response as ElementTree.XML
+        """
+        pass
+
+    @abstractmethod
+    async def get_available_models(self) -> List[Dict[str, Any]]:
+        """
+        Retrieve all available models from the provider's API.
+
+        Returns:
+            List of model dictionaries containing model information.
+            Each dictionary should contain at least:
+            - 'id': Model identifier/name
+            - 'object': Model object type (usually 'model')
+            Additional fields may include context_length, pricing, etc.
         """
         pass

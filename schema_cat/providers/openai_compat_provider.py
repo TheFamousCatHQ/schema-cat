@@ -1,5 +1,6 @@
 import logging
 import os
+from abc import ABC
 from xml.etree import ElementTree
 
 import httpx
@@ -12,23 +13,23 @@ from schema_cat.xml import xml_from_string, XMLParsingError
 logger = logging.getLogger("schema_cat.openai_compat")
 
 
-class OpenAiCompatProvider(BaseProvider):
-    """OpenRouter provider implementation."""
+class OpenAiCompatProvider(BaseProvider, ABC):
+    """OpenAI compatible provider implementation."""
 
     @with_retry()
-    async def call(self,
-                   base_url: str,
-                   api_key: str,
-                   model: str,
-                   sys_prompt: str,
-                   user_prompt: str,
-                   xml_schema: str,
-                   max_tokens: int = 8192,
-                   temperature: float = 0.0,
-                   max_retries: int = 5,
-                   initial_delay: float = 1.0,
-                   max_delay: float = 60.0,
-                   retry_model: str = None) -> ElementTree.XML:
+    async def _call(self,
+                    base_url: str,
+                    api_key: str,
+                    model: str,
+                    sys_prompt: str,
+                    user_prompt: str,
+                    xml_schema: str,
+                    max_tokens: int = 8192,
+                    temperature: float = 0.0,
+                    max_retries: int = 5,
+                    initial_delay: float = 1.0,
+                    max_delay: float = 60.0,
+                    retry_model: str = None) -> ElementTree.XML:
 
         if retry_model is None:
             retry_model = model
@@ -74,14 +75,14 @@ class OpenAiCompatProvider(BaseProvider):
             if max_retries > 0:
                 from schema_cat import Provider
                 from schema_cat.model_providers import get_model_name_by_common_name_and_provider
-                return await OpenAiCompatProvider.call(self,
-                                                       base_url=base_url,
-                                                       api_key=api_key,
-                                                       user_prompt=content,
-                                                       sys_prompt="Convert this data into valid XML according to the schema",
-                                                       xml_schema=xml_schema,
-                                                       model=retry_model,
-                                                       max_retries=0
-                                                       )
+                return await self._call(
+                    base_url=base_url,
+                    api_key=api_key,
+                    user_prompt=content,
+                    sys_prompt="Convert this data into valid XML according to the schema",
+                    xml_schema=xml_schema,
+                    model=retry_model,
+                    max_retries=0
+                )
             else:
                 raise e

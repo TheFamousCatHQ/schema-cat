@@ -8,8 +8,8 @@ from schema_cat.retry import with_retry
 logger = logging.getLogger("schema_cat.openrouter")
 
 
-class OpenRouterProvider(OpenAiCompatProvider):
-    """OpenRouter provider implementation."""
+class CometProvider(OpenAiCompatProvider):
+    """CometApi provider implementation."""
 
     @with_retry()
     async def call(self,
@@ -22,8 +22,8 @@ class OpenRouterProvider(OpenAiCompatProvider):
                    max_retries: int = 5,
                    initial_delay: float = 1.0,
                    max_delay: float = 60.0) -> ElementTree.XML:
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        api_key = os.getenv("COMET_API_KEY")
+        base_url = "https://api.cometapi.com/v1"
 
         return await self._call(base_url, api_key, model, sys_prompt, user_prompt, xml_schema, max_tokens,
                                 temperature,

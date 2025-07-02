@@ -52,6 +52,7 @@ class RoutingStrategy(str, Enum):
     FASTEST = "fastest"
     MOST_RELIABLE = "most_reliable"
     HIGHEST_QUALITY = "highest_quality"
+    MAX_CONTEXT = "max_context"
 
 
 @dataclass
@@ -72,20 +73,8 @@ class ModelRegistry:
         self._initialize_default_models()
 
     def _initialize_default_models(self):
-        """Initialize with current MODEL_PROVIDER_MAP for backward compatibility."""
-        from schema_cat.model_providers import MODEL_PROVIDER_MAP
-
-        # Convert existing mappings to new format
-        for canonical_name, provider_list in MODEL_PROVIDER_MAP.items():
-            for i, (provider, provider_model_name) in enumerate(provider_list):
-                self.register_model(
-                    canonical_name=canonical_name,
-                    provider=provider,
-                    provider_model_name=provider_model_name,
-                    priority=i  # Lower index = higher priority
-                )
-
-        # Add common aliases
+        """Initialize with common aliases only - models will be discovered dynamically."""
+        # Only register common aliases - no hardcoded models
         self._register_common_aliases()
 
     def _register_common_aliases(self):
@@ -103,8 +92,8 @@ class ModelRegistry:
             "claude-haiku": "claude-haiku",
 
             # Gemini variants
-            "gemini": "gemini-2.5-flash-preview",
-            "gemini-flash": "gemini-2.5-flash-preview",
+            "gemini": "google/gemini-2.5-flash",
+            "gemini-flash": "google/gemini-2.5-flash",
         }
 
         for alias, canonical in common_aliases.items():
@@ -228,7 +217,7 @@ class ModelMatcher:
         self.registry = registry
         self.fuzzy_matcher = FuzzyMatcher()
 
-    def resolve_model(self, model_input: str, 
+    async def resolve_model(self, model_input: str, 
                      preferred_providers: List[Provider] = None,
                      fallback_strategy: RoutingStrategy = RoutingStrategy.BEST_AVAILABLE,
                      requirements: ModelRequirements = None) -> Optional[ModelResolution]:
@@ -246,9 +235,11 @@ class ModelMatcher:
         canonical_name = self.registry.get_canonical_name(model_input)
 
         if canonical_name:
-            return self._resolve_canonical_model(
+            resolution = self._resolve_canonical_model(
                 canonical_name, preferred_providers, fallback_strategy, requirements
             )
+            if resolution:
+                return resolution
 
         # Step 2: Try fuzzy matching
         all_canonical_names = self.registry.get_all_canonical_names()
@@ -268,7 +259,147 @@ class ModelMatcher:
                     resolution.confidence = confidence
                     return resolution
 
+        # Step 3: Dynamic discovery - discover models from providers if not found
+        await self._discover_and_register_missing_model(model_input, preferred_providers)
+
+        # Step 4: Try resolution again after discovery
+        canonical_name = self.registry.get_canonical_name(model_input)
+        if canonical_name:
+            resolution = self._resolve_canonical_model(
+                canonical_name, preferred_providers, fallback_strategy, requirements
+            )
+            if resolution:
+                return resolution
+
+        # Step 5: Try fuzzy matching again after discovery
+        all_canonical_names = self.registry.get_all_canonical_names()
+        all_aliases = list(self.registry.get_all_aliases().keys())
+        all_candidates = all_canonical_names + all_aliases
+
+        matches = self.fuzzy_matcher.find_best_matches(model_input, all_candidates)
+
+        for match_name, confidence in matches:
+            canonical_name = self.registry.get_canonical_name(match_name)
+            if canonical_name:
+                resolution = self._resolve_canonical_model(
+                    canonical_name, preferred_providers, fallback_strategy, requirements
+                )
+                if resolution:
+                    resolution.confidence = confidence
+                    return resolution
+
         return None
+
+    async def _discover_and_register_missing_model(self, model_input: str, 
+                                                  preferred_providers: List[Provider] = None) -> None:
+        """
+        Discover and register models from providers when a model is not found in the registry.
+
+        Args:
+            model_input: The model name/input that wasn't found
+            preferred_providers: Optional list of preferred providers to check first
+        """
+        from schema_cat.provider_enum import Provider, _provider_api_key_available
+        import logging
+
+        logger = logging.getLogger("schema_cat.model_registry")
+
+        # Determine which providers to check
+        providers_to_check = []
+
+        # If model_input contains a provider prefix (e.g., "openai/gpt-4"), prioritize that provider
+        if "/" in model_input:
+            provider_str, _ = model_input.split("/", 1)
+            try:
+                specific_provider = Provider(provider_str.lower())
+                if _provider_api_key_available(specific_provider):
+                    providers_to_check.append(specific_provider)
+            except ValueError:
+                pass  # Invalid provider name
+
+        # Add preferred providers
+        if preferred_providers:
+            for provider in preferred_providers:
+                if provider not in providers_to_check and _provider_api_key_available(provider):
+                    providers_to_check.append(provider)
+
+        # Add all available providers as fallback
+        for provider in Provider:
+            if provider not in providers_to_check and _provider_api_key_available(provider):
+                providers_to_check.append(provider)
+
+        # Discover models from each provider
+        for provider in providers_to_check:
+            try:
+                logger.info(f"Discovering models from {provider.value} for '{model_input}'")
+                models = await provider.init_models()
+
+                # Register discovered models
+                for model_data in models:
+                    model_id = model_data.get('id')
+                    if not model_id:
+                        continue
+
+                    # Check if this model matches what we're looking for
+                    if self._model_matches_input(model_id, model_input):
+                        # Normalize the canonical name to ensure consistency across providers
+                        canonical_name = _normalize_canonical_name(model_id, provider)
+
+                        # Create model capabilities from discovered data
+                        capabilities = _estimate_model_capabilities(model_id, model_data)
+
+                        # Register the discovered model
+                        self.registry.register_model(
+                            canonical_name=canonical_name,
+                            provider=provider,
+                            provider_model_name=model_id,
+                            priority=100,  # Lower priority than hardcoded models
+                            capabilities=capabilities
+                        )
+
+                        logger.info(f"Registered discovered model: {model_id} from {provider.value}")
+
+                        # If this is an exact match, we can stop here
+                        if model_id.lower() == model_input.lower():
+                            return
+
+            except Exception as e:
+                logger.warning(f"Failed to discover models from {provider.value}: {e}")
+                continue
+
+    def _model_matches_input(self, model_id: str, model_input: str) -> bool:
+        """
+        Check if a discovered model ID matches the input we're looking for.
+
+        Args:
+            model_id: The model ID from the provider
+            model_input: The input model name we're trying to resolve
+
+        Returns:
+            True if the model matches the input
+        """
+        # Normalize both strings for comparison
+        normalized_id = self.fuzzy_matcher.normalize_name(model_id)
+        normalized_input = self.fuzzy_matcher.normalize_name(model_input)
+
+        # Check for exact match
+        if normalized_id == normalized_input:
+            return True
+
+        # Check if input is contained in model ID
+        if normalized_input in normalized_id:
+            return True
+
+        # Check for provider-specific format (e.g., "openai/gpt-4" matches "gpt-4")
+        if "/" in model_input:
+            _, model_part = model_input.split("/", 1)
+            normalized_model_part = self.fuzzy_matcher.normalize_name(model_part)
+            if normalized_model_part == normalized_id or normalized_model_part in normalized_id:
+                return True
+
+        # Check similarity score
+        similarity = self.fuzzy_matcher.calculate_similarity(model_input, model_id)
+        return similarity >= 0.7  # High threshold for automatic registration
 
     def _resolve_canonical_model(self, canonical_name: str,
                                preferred_providers: List[Provider] = None,
@@ -300,19 +431,24 @@ class ModelMatcher:
             if not available_models:
                 return None
 
-        # Apply provider preferences
+        # Apply provider preferences and routing strategy
         if preferred_providers:
+            # Filter models by preferred providers
+            preferred_models = []
             for preferred_provider in preferred_providers:
                 for model in available_models:
                     if model.provider == preferred_provider:
-                        return ModelResolution(
-                            provider=model.provider,
-                            model_name=model.provider_model_name,
-                            canonical_name=canonical_name
-                        )
+                        preferred_models.append(model)
 
-        # Apply fallback strategy
-        selected_model = self._apply_strategy(available_models, fallback_strategy)
+            # Apply routing strategy to preferred models
+            if preferred_models:
+                selected_model = self._apply_strategy(preferred_models, fallback_strategy)
+            else:
+                # No models found in preferred providers, fall back to all available models
+                selected_model = self._apply_strategy(available_models, fallback_strategy)
+        else:
+            # Apply fallback strategy to all available models
+            selected_model = self._apply_strategy(available_models, fallback_strategy)
 
         if selected_model:
             return ModelResolution(
@@ -358,6 +494,10 @@ class ModelMatcher:
             # Return highest quality model
             return max(models, key=lambda x: x.capabilities.quality_score)
 
+        elif strategy == RoutingStrategy.MAX_CONTEXT:
+            # Return model with the largest context window
+            return max(models, key=lambda x: x.capabilities.context_length)
+
         else:
             # Default to best available
             return min(models, key=lambda x: x.priority)
@@ -378,6 +518,134 @@ def get_global_registry() -> ModelRegistry:
 def get_global_matcher() -> ModelMatcher:
     """Get the global model matcher instance."""
     return ModelMatcher(get_global_registry())
+
+
+def _estimate_model_capabilities(model_id: str, model_data: dict) -> 'ModelCapabilities':
+    """
+    Estimate model capabilities based on model ID and available data.
+
+    Args:
+        model_id: The model ID from the provider
+        model_data: Raw model data from the provider API
+
+    Returns:
+        ModelCapabilities with estimated values
+    """
+    # Start with provided data or defaults
+    context_length = model_data.get('context_length', 4096)
+    cost_per_1k_tokens = 0.0  # Default, would need pricing API for accurate costs
+    quality_score = 0.5  # Default neutral score
+
+    # Estimate capabilities based on model name patterns
+    model_lower = model_id.lower()
+
+    # Gemini model capabilities estimation
+    if 'gemini' in model_lower:
+        # Context length estimation based on model type
+        if 'pro' in model_lower:
+            if '2.0' in model_lower or '2.5' in model_lower:
+                context_length = 2000000  # Gemini 2.0/2.5 Pro has very high context
+                quality_score = 0.95
+                cost_per_1k_tokens = 0.075
+            else:
+                context_length = 1000000  # Gemini 1.5 Pro
+                quality_score = 0.9
+                cost_per_1k_tokens = 0.05
+        elif 'flash' in model_lower:
+            if '2.0' in model_lower or '2.5' in model_lower:
+                context_length = 1000000  # Gemini 2.0/2.5 Flash
+                quality_score = 0.85
+                cost_per_1k_tokens = 0.02
+            else:
+                context_length = 1000000  # Gemini 1.5 Flash
+                quality_score = 0.8
+                cost_per_1k_tokens = 0.015
+        elif 'thinking' in model_lower:
+            context_length = 300000  # Thinking models have good context but not as high as Pro
+            quality_score = 0.9
+            cost_per_1k_tokens = 0.04
+        elif 'exp' in model_lower:
+            # Experimental models - assume high quality but variable context
+            context_length = 500000
+            quality_score = 0.88
+            cost_per_1k_tokens = 0.03
+        else:
+            # Default gemini model
+            context_length = 32000
+            quality_score = 0.75
+            cost_per_1k_tokens = 0.01
+
+    # GPT model capabilities estimation
+    elif 'gpt' in model_lower:
+        if 'gpt-4' in model_lower:
+            if 'turbo' in model_lower:
+                context_length = 128000
+                quality_score = 0.95
+                cost_per_1k_tokens = 0.06
+            elif 'o1' in model_lower:
+                context_length = 200000
+                quality_score = 0.98
+                cost_per_1k_tokens = 0.15
+            else:
+                context_length = 8192
+                quality_score = 0.9
+                cost_per_1k_tokens = 0.08
+        elif 'gpt-3.5' in model_lower:
+            context_length = 16385
+            quality_score = 0.8
+            cost_per_1k_tokens = 0.002
+
+    # Claude model capabilities estimation
+    elif 'claude' in model_lower:
+        if 'opus' in model_lower:
+            context_length = 200000
+            quality_score = 0.95
+            cost_per_1k_tokens = 0.075
+        elif 'sonnet' in model_lower:
+            context_length = 200000
+            quality_score = 0.9
+            cost_per_1k_tokens = 0.015
+        elif 'haiku' in model_lower:
+            context_length = 200000
+            quality_score = 0.8
+            cost_per_1k_tokens = 0.0025
+
+    return ModelCapabilities(
+        context_length=context_length,
+        supports_function_calling=True,  # Assume true for modern models
+        cost_per_1k_tokens=cost_per_1k_tokens,
+        quality_score=quality_score
+    )
+
+
+def _normalize_canonical_name(model_id: str, provider: 'Provider') -> str:
+    """
+    Normalize model names to ensure similar models from different providers 
+    use the same canonical name.
+
+    Args:
+        model_id: The model ID from the provider
+        provider: The provider enum
+
+    Returns:
+        Normalized canonical name
+    """
+    from schema_cat.provider_enum import Provider
+
+    # For COMET models, add google/ prefix to match OPENROUTER naming
+    if provider == Provider.COMET:
+        # If it's a gemini model without google/ prefix, add it
+        if model_id.startswith('gemini-') and not model_id.startswith('google/'):
+            model_id = f"google/{model_id}"
+
+    # Group similar gemini models under the same canonical name for better routing
+    if 'gemini' in model_id.lower():
+        # Group all gemini models under the main canonical name that "gemini" alias points to
+        # This allows routing strategies to choose between different gemini variants
+        return "google/gemini-2.5-flash"
+
+    # For other providers, use the model_id as-is
+    return model_id
 
 
 async def discover_and_register_models(provider: 'Provider' = None) -> Dict[str, int]:
@@ -412,17 +680,15 @@ async def discover_and_register_models(provider: 'Provider' = None) -> Dict[str,
                 if not model_id:
                     continue
 
+                # Normalize the canonical name to ensure consistency across providers
+                canonical_name = _normalize_canonical_name(model_id, prov)
+
                 # Create model capabilities from discovered data
-                capabilities = ModelCapabilities(
-                    context_length=model_data.get('context_length', 4096),
-                    supports_function_calling=True,  # Assume true for modern models
-                    cost_per_1k_tokens=0.0,  # Would need pricing API for accurate costs
-                    quality_score=0.5  # Default neutral score
-                )
+                capabilities = _estimate_model_capabilities(model_id, model_data)
 
                 # Register the discovered model
                 registry.register_model(
-                    canonical_name=model_id,
+                    canonical_name=canonical_name,
                     provider=prov,
                     provider_model_name=model_id,
                     priority=0,  # Default priority

@@ -6,15 +6,15 @@ from typing import Type, TypeVar, List, Optional
 from pydantic import BaseModel
 
 from schema_cat.model_providers import MODEL_PROVIDER_MAP
+from schema_cat.model_registry import (
+    ModelRequirements, RoutingStrategy, RequestContext, ModelResolution, get_global_registry, get_global_matcher,
+    discover_and_register_models
+)
+from schema_cat.model_router import get_global_router, RouterConfig, configure_global_router
 from schema_cat.provider import get_provider_and_model
 from schema_cat.provider_enum import Provider, _provider_api_key_available
 from schema_cat.retry import with_retry, retry_with_exponential_backoff
 from schema_cat.schema import schema_to_xml, xml_to_string, xml_to_base_model
-from schema_cat.model_registry import (
-    ModelRequirements, RoutingStrategy, RequestContext, get_global_registry, get_global_matcher,
-    discover_and_register_models
-)
-from schema_cat.model_router import get_global_router, RouterConfig, configure_global_router
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -65,8 +65,37 @@ async def prompt_with_schema(
         An instance of the Pydantic model
     """
 
-    # Backward compatibility: if provider is specified, use legacy routing
-    if provider is not None:
+    # If provider is specified, use smart routing but constrain to that provider
+    if provider is not None and use_smart_routing:
+        # Use smart routing with the specified provider as the only preferred provider
+        router = get_global_router()
+
+        # Create request context with the specified provider as the only option
+        context = RequestContext(
+            requirements=model_requirements,
+            strategy=routing_strategy,
+            preferred_providers=[provider]
+        )
+
+        # Route the model
+        route_result = await router.route_model(model, context)
+
+        if route_result is None:
+            # Fallback to legacy system if smart routing fails
+            logging.warning(
+                f"Smart routing failed for model '{model}' with provider {provider.value}, falling back to legacy routing")
+            p = provider
+            provider_model = model
+            logging.info(f"Fallback routing - provider: {p.value}, model: {provider_model}")
+        else:
+            p = route_result.resolution.provider
+            provider_model = route_result.resolution.model_name
+            logging.info(f"Smart routing with specified provider - provider: {p.value}, model: {provider_model}, "
+                         f"canonical: {route_result.resolution.canonical_name}, "
+                         f"reason: {route_result.routing_reason}, "
+                         f"confidence: {route_result.resolution.confidence:.2f}")
+    elif provider is not None:
+        # Legacy routing when smart routing is disabled
         p = provider
         provider_model = model
         logging.info(f"Using legacy routing with provider: {p.value}, model: {provider_model}")
@@ -86,7 +115,7 @@ async def prompt_with_schema(
         )
 
         # Route the model
-        route_result = router.route_model(model, context)
+        route_result = await router.route_model(model, context)
 
         if route_result is None:
             # Fallback to legacy system if smart routing fails
@@ -100,9 +129,9 @@ async def prompt_with_schema(
             p = route_result.resolution.provider
             provider_model = route_result.resolution.model_name
             logging.info(f"Smart routing - provider: {p.value}, model: {provider_model}, "
-                        f"canonical: {route_result.resolution.canonical_name}, "
-                        f"reason: {route_result.routing_reason}, "
-                        f"confidence: {route_result.resolution.confidence:.2f}")
+                         f"canonical: {route_result.resolution.canonical_name}, "
+                         f"reason: {route_result.routing_reason}, "
+                         f"confidence: {route_result.resolution.confidence:.2f}")
 
     xml: str = xml_to_string(schema_to_xml(schema))
     xml_elem = await p.call(
@@ -134,7 +163,7 @@ def get_available_models(provider: Provider = None) -> List[str]:
     return router.get_available_models(provider)
 
 
-def get_provider_for_model(model: str) -> Optional[Provider]:
+async def get_provider_for_model(model: str) -> Optional[Provider]:
     """
     Get the provider that would be used for a given model input.
 
@@ -145,10 +174,10 @@ def get_provider_for_model(model: str) -> Optional[Provider]:
         Provider that would be selected, or None if not available
     """
     router = get_global_router()
-    return router.get_provider_for_model(model)
+    return await router.get_provider_for_model(model)
 
 
-def validate_model_availability(model: str) -> bool:
+async def validate_model_availability(model: str) -> bool:
     """
     Check if a model is available with current API keys.
 
@@ -159,7 +188,50 @@ def validate_model_availability(model: str) -> bool:
         True if model is available, False otherwise
     """
     router = get_global_router()
-    return router.validate_model_availability(model)
+    return await router.validate_model_availability(model)
+
+
+async def resolve_model(
+    model: str,
+    preferred_providers: List[Provider] = None,
+    routing_strategy: RoutingStrategy = RoutingStrategy.BEST_AVAILABLE,
+    model_requirements: ModelRequirements = None
+) -> Optional[ModelResolution]:
+    """
+    Resolve a model input to the best available provider/model combination.
+
+    This function exposes the core model resolution logic for testing and inspection.
+    It supports:
+    - Simple names: 'gpt4', 'claude', 'gemini'
+    - Exact names: 'openai/gpt-4-turbo', 'anthropic/claude-3-sonnet'
+    - Fuzzy matching: 'gpt4turbo' -> 'gpt-4-turbo'
+    - Dynamic model discovery from provider APIs
+
+    Args:
+        model: The model name or alias to resolve
+        preferred_providers: Optional list of preferred providers in order of preference
+        routing_strategy: Strategy for model selection (cheapest, fastest, highest_quality, etc.)
+        model_requirements: Optional requirements for model selection (context length, capabilities, etc.)
+
+    Returns:
+        ModelResolution object containing provider, model name, canonical name, and confidence,
+        or None if no suitable model is found
+
+    Example:
+        >>> resolution = await resolve_model("gpt4")
+        >>> if resolution:
+        ...     print(f"Provider: {resolution.provider.value}")
+        ...     print(f"Model: {resolution.model_name}")
+        ...     print(f"Canonical: {resolution.canonical_name}")
+        ...     print(f"Confidence: {resolution.confidence}")
+    """
+    matcher = get_global_matcher()
+    return await matcher.resolve_model(
+        model_input=model,
+        preferred_providers=preferred_providers,
+        fallback_strategy=routing_strategy,
+        requirements=model_requirements
+    )
 
 
 def configure_routing(config: RouterConfig):
@@ -190,8 +262,9 @@ __all__ = [
 
     # Utility functions
     'get_available_models',
-    'get_provider_for_model', 
+    'get_provider_for_model',
     'validate_model_availability',
+    'resolve_model',
     'configure_routing',
     'load_config_from_file',
     'discover_and_register_models',
@@ -204,7 +277,7 @@ __all__ = [
 
     # Schema functions
     'schema_to_xml',
-    'xml_to_string', 
+    'xml_to_string',
     'xml_to_base_model',
 
     # Legacy exports for backward compatibility

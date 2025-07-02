@@ -135,7 +135,7 @@ class SmartModelRouter:
         for alias, canonical in self.config.aliases.items():
             self.registry.register_alias(alias, canonical)
 
-    def route_model(self, model_input: str, context: RequestContext = None) -> Optional[RouteResult]:
+    async def route_model(self, model_input: str, context: RequestContext = None) -> Optional[RouteResult]:
         """
         Route model request to best provider considering:
         - API key availability
@@ -173,7 +173,7 @@ class SmartModelRouter:
             requirements.max_cost_per_1k_tokens = override_config['cost_threshold']
 
         # Resolve the model
-        resolution = self.matcher.resolve_model(
+        resolution = await self.matcher.resolve_model(
             model_input=model_input,
             preferred_providers=preferred_providers,
             fallback_strategy=strategy,
@@ -240,14 +240,15 @@ class SmartModelRouter:
 
         return sorted(available_models)
 
-    def get_provider_for_model(self, model_input: str) -> Optional[Provider]:
+    async def get_provider_for_model(self, model_input: str) -> Optional[Provider]:
         """Get the provider that would be used for a given model input."""
-        route_result = self.route_model(model_input)
+        route_result = await self.route_model(model_input)
         return route_result.resolution.provider if route_result else None
 
-    def validate_model_availability(self, model_input: str) -> bool:
+    async def validate_model_availability(self, model_input: str) -> bool:
         """Check if a model is available with current API keys."""
-        return self.route_model(model_input) is not None
+        route_result = await self.route_model(model_input)
+        return route_result is not None
 
 
 # Global router instance

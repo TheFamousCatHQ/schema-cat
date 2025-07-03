@@ -1,8 +1,8 @@
 import logging
 import os
 from abc import ABC
-from xml.etree import ElementTree
 from typing import Union
+from xml.etree import ElementTree
 
 import httpx
 
@@ -64,7 +64,7 @@ class OpenAiCompatProvider(BaseProvider, ABC):
             response.raise_for_status()
             content = response.json()["choices"][0]["message"]["content"].strip()
 
-        logger.info("Successfully received response from OpenRouter")
+        logger.info(f"Successfully received response from {self.__class__.__name__}")
         logger.debug(f"Raw response content: {content}")
 
         # If no XML schema provided, return raw string response

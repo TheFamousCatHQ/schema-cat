@@ -1,7 +1,7 @@
 import logging
 import os
 from xml.etree import ElementTree
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 
 from schema_cat.base_provider import BaseProvider
 from schema_cat.xml import xml_from_string
@@ -19,12 +19,12 @@ class AnthropicProvider(BaseProvider):
                    model: str,
                    sys_prompt: str,
                    user_prompt: str,
-                   xml_schema: str,
+                   xml_schema: str = None,
                    max_tokens: int = 8192,
                    temperature: float = 0.0,
                    max_retries: int = 5,
                    initial_delay: float = 1.0,
-                   max_delay: float = 60.0) -> ElementTree.XML:
+                   max_delay: float = 60.0) -> Union[ElementTree.XML, str]:
         import anthropic
         api_key = os.getenv("ANTHROPIC_API_KEY")
         client = anthropic.AsyncAnthropic(api_key=api_key)
@@ -40,6 +40,13 @@ class AnthropicProvider(BaseProvider):
             'text'].strip()
         logger.info("Successfully received response from Anthropic")
         logger.debug(f"Raw response content: {content}")
+
+        # If no XML schema provided, return raw string response
+        if xml_schema is None:
+            logger.debug("No XML schema provided, returning raw string response")
+            return content
+
+        # Otherwise, parse as XML for structured response
         root = xml_from_string(content)
         logger.debug("Successfully parsed response as XML")
         return root

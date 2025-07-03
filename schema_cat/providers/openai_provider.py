@@ -1,7 +1,7 @@
 import logging
 import os
 from xml.etree import ElementTree
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 
 from schema_cat.base_provider import BaseProvider
 from schema_cat.prompt import build_system_prompt
@@ -19,12 +19,12 @@ class OpenAIProvider(BaseProvider):
                    model: str,
                    sys_prompt: str,
                    user_prompt: str,
-                   xml_schema: str,
+                   xml_schema: str = None,
                    max_tokens: int = 8192,
                    temperature: float = 0.0,
                    max_retries: int = 5,
                    initial_delay: float = 1.0,
-                   max_delay: float = 60.0) -> ElementTree.XML:
+                   max_delay: float = 60.0) -> Union[ElementTree.XML, str]:
         import openai
         api_key = os.getenv("OPENAI_API_KEY")
         base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
@@ -44,6 +44,13 @@ class OpenAIProvider(BaseProvider):
         content = response.choices[0].message.content.strip()
         logger.info("Successfully received response from OpenAI")
         logger.debug(f"Raw response content: {content}")
+
+        # If no XML schema provided, return raw string response
+        if xml_schema is None:
+            logger.debug("No XML schema provided, returning raw string response")
+            return content
+
+        # Otherwise, parse as XML for structured response
         root = xml_from_string(content)
         logger.debug("Successfully parsed response as XML")
         return root

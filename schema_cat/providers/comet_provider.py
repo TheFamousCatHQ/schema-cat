@@ -1,7 +1,7 @@
 import logging
 import os
 from xml.etree import ElementTree
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 import httpx
 
 from schema_cat.providers.openai_compat_provider import OpenAiCompatProvider
@@ -18,12 +18,12 @@ class CometProvider(OpenAiCompatProvider):
                    model: str,
                    sys_prompt: str,
                    user_prompt: str,
-                   xml_schema: str,
+                   xml_schema: str = None,
                    max_tokens: int = 8192,
                    temperature: float = 0.0,
                    max_retries: int = 5,
                    initial_delay: float = 1.0,
-                   max_delay: float = 60.0) -> ElementTree.XML:
+                   max_delay: float = 60.0) -> Union[ElementTree.XML, str]:
         api_key = os.getenv("COMET_API_KEY")
         base_url = "https://api.cometapi.com/v1"
 

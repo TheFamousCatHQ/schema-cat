@@ -2,6 +2,7 @@ import logging
 import os
 from abc import ABC
 from xml.etree import ElementTree
+from typing import Union
 
 import httpx
 
@@ -23,13 +24,13 @@ class OpenAiCompatProvider(BaseProvider, ABC):
                     model: str,
                     sys_prompt: str,
                     user_prompt: str,
-                    xml_schema: str,
+                    xml_schema: str = None,
                     max_tokens: int = 8192,
                     temperature: float = 0.0,
                     max_retries: int = 5,
                     initial_delay: float = 1.0,
                     max_delay: float = 60.0,
-                    retry_model: str = None) -> ElementTree.XML:
+                    retry_model: str = None) -> Union[ElementTree.XML, str]:
 
         if retry_model is None:
             retry_model = model
@@ -65,6 +66,11 @@ class OpenAiCompatProvider(BaseProvider, ABC):
 
         logger.info("Successfully received response from OpenRouter")
         logger.debug(f"Raw response content: {content}")
+
+        # If no XML schema provided, return raw string response
+        if xml_schema is None:
+            logger.debug("No XML schema provided, returning raw string response")
+            return content
 
         # Parse the response content as XML
         try:

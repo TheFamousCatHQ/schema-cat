@@ -17,52 +17,20 @@ from schema_cat.schema import schema_to_xml, xml_to_string, xml_to_base_model
 T = TypeVar("T", bound=BaseModel)
 
 
-async def prompt_with_schema(
-        prompt: str,
-        schema: Type[T],
+async def _resolve_provider_and_model(
         model: str,
-        max_tokens: int = 8192,
-        temperature: float = 0.0,
-        sys_prompt: str = "",
-        max_retries: int = 5,
-        initial_delay: float = 1.0,
-        max_delay: float = 60.0,
         provider: Provider = None,
-        # New enhanced parameters
         model_requirements: ModelRequirements = None,
         routing_strategy: RoutingStrategy = None,
         preferred_providers: List[Provider] = None,
         use_smart_routing: bool = True,
-) -> T:
+) -> tuple[Provider, str]:
     """
-    Automatically selects the best provider and provider-specific model for the given model name.
-
-    Enhanced with intelligent model routing that supports:
-    - Simple names: 'gpt4', 'claude', 'gemini'
-    - Exact names: 'openai/gpt-4-turbo', 'anthropic/claude-3-sonnet'
-    - Fuzzy matching: 'gpt4turbo' -> 'gpt-4-turbo'
-    - Configuration-based overrides and routing strategies
-
-    Args:
-        prompt: The prompt to send to the LLM
-        schema: A Pydantic model class defining the expected response structure
-        model: The LLM model to use (e.g., "gpt4", "claude", "gpt-4-turbo", "openai/gpt-4-turbo")
-        max_tokens: Maximum number of tokens to generate
-        temperature: Sampling temperature (0.0 to 1.0)
-        sys_prompt: Optional system prompt to prepend
-        max_retries: Maximum number of retries for API calls
-        initial_delay: Initial delay between retries in seconds
-        max_delay: Maximum delay between retries in seconds
-        provider: Optional provider to use. If specified, bypasses smart routing.
-        model_requirements: Optional requirements for model selection (context length, capabilities, etc.)
-        routing_strategy: Optional strategy for model selection (cheapest, fastest, highest_quality, etc.)
-        preferred_providers: Optional list of preferred providers in order of preference
-        use_smart_routing: Whether to use the new smart routing system (default: True)
+    Common routing logic to resolve provider and model name.
 
     Returns:
-        An instance of the Pydantic model
+        Tuple of (provider, provider_model)
     """
-
     # If provider is specified, use smart routing but constrain to that provider
     if provider is not None and use_smart_routing:
         # Use smart routing with the specified provider as the only preferred provider
@@ -136,6 +104,64 @@ async def prompt_with_schema(
                          f"reason: {route_result.routing_reason}, "
                          f"confidence: {route_result.resolution.confidence:.2f}")
 
+    return p, provider_model
+
+
+async def prompt_with_schema(
+        prompt: str,
+        schema: Type[T],
+        model: str,
+        max_tokens: int = 8192,
+        temperature: float = 0.0,
+        sys_prompt: str = "",
+        max_retries: int = 5,
+        initial_delay: float = 1.0,
+        max_delay: float = 60.0,
+        provider: Provider = None,
+        # New enhanced parameters
+        model_requirements: ModelRequirements = None,
+        routing_strategy: RoutingStrategy = None,
+        preferred_providers: List[Provider] = None,
+        use_smart_routing: bool = True,
+) -> T:
+    """
+    Automatically selects the best provider and provider-specific model for the given model name.
+
+    Enhanced with intelligent model routing that supports:
+    - Simple names: 'gpt4', 'claude', 'gemini'
+    - Exact names: 'openai/gpt-4-turbo', 'anthropic/claude-3-sonnet'
+    - Fuzzy matching: 'gpt4turbo' -> 'gpt-4-turbo'
+    - Configuration-based overrides and routing strategies
+
+    Args:
+        prompt: The prompt to send to the LLM
+        schema: A Pydantic model class defining the expected response structure
+        model: The LLM model to use (e.g., "gpt4", "claude", "gpt-4-turbo", "openai/gpt-4-turbo")
+        max_tokens: Maximum number of tokens to generate
+        temperature: Sampling temperature (0.0 to 1.0)
+        sys_prompt: Optional system prompt to prepend
+        max_retries: Maximum number of retries for API calls
+        initial_delay: Initial delay between retries in seconds
+        max_delay: Maximum delay between retries in seconds
+        provider: Optional provider to use. If specified, bypasses smart routing.
+        model_requirements: Optional requirements for model selection (context length, capabilities, etc.)
+        routing_strategy: Optional strategy for model selection (cheapest, fastest, highest_quality, etc.)
+        preferred_providers: Optional list of preferred providers in order of preference
+        use_smart_routing: Whether to use the new smart routing system (default: True)
+
+    Returns:
+        An instance of the Pydantic model
+    """
+
+    p, provider_model = await _resolve_provider_and_model(
+        model=model,
+        provider=provider,
+        model_requirements=model_requirements,
+        routing_strategy=routing_strategy,
+        preferred_providers=preferred_providers,
+        use_smart_routing=use_smart_routing
+    )
+
     xml: str = xml_to_string(schema_to_xml(schema))
     xml_elem = await p.call(
         provider_model,
@@ -149,6 +175,78 @@ async def prompt_with_schema(
         max_delay=max_delay,
     )
     return xml_to_base_model(xml_elem, schema)
+
+
+async def prompt_without_schema(
+        prompt: str,
+        model: str,
+        max_tokens: int = 8192,
+        temperature: float = 0.0,
+        sys_prompt: str = "",
+        max_retries: int = 5,
+        initial_delay: float = 1.0,
+        max_delay: float = 60.0,
+        provider: Provider = None,
+        # Enhanced parameters
+        model_requirements: ModelRequirements = None,
+        routing_strategy: RoutingStrategy = None,
+        preferred_providers: List[Provider] = None,
+        use_smart_routing: bool = True,
+) -> str:
+    """
+    Send a freeform prompt to an LLM without requiring a structured response schema.
+
+    This function provides the same intelligent model routing as prompt_with_schema
+    but returns the raw string response from the LLM instead of parsing it into
+    a structured format.
+
+    Enhanced with intelligent model routing that supports:
+    - Simple names: 'gpt4', 'claude', 'gemini'
+    - Exact names: 'openai/gpt-4-turbo', 'anthropic/claude-3-sonnet'
+    - Fuzzy matching: 'gpt4turbo' -> 'gpt-4-turbo'
+    - Configuration-based overrides and routing strategies
+
+    Args:
+        prompt: The prompt to send to the LLM
+        model: The LLM model to use (e.g., "gpt4", "claude", "gpt-4-turbo", "openai/gpt-4-turbo")
+        max_tokens: Maximum number of tokens to generate
+        temperature: Sampling temperature (0.0 to 1.0)
+        sys_prompt: Optional system prompt to prepend
+        max_retries: Maximum number of retries for API calls
+        initial_delay: Initial delay between retries in seconds
+        max_delay: Maximum delay between retries in seconds
+        provider: Optional provider to use. If specified, bypasses smart routing.
+        model_requirements: Optional requirements for model selection (context length, capabilities, etc.)
+        routing_strategy: Optional strategy for model selection (cheapest, fastest, highest_quality, etc.)
+        preferred_providers: Optional list of preferred providers in order of preference
+        use_smart_routing: Whether to use the new smart routing system (default: True)
+
+    Returns:
+        Raw string response from the LLM
+    """
+
+    p, provider_model = await _resolve_provider_and_model(
+        model=model,
+        provider=provider,
+        model_requirements=model_requirements,
+        routing_strategy=routing_strategy,
+        preferred_providers=preferred_providers,
+        use_smart_routing=use_smart_routing
+    )
+
+    # Call provider without XML schema to get raw string response
+    response = await p.call(
+        provider_model,
+        sys_prompt,
+        prompt,
+        xml_schema=None,  # No schema for freeform response
+        max_tokens=max_tokens,
+        temperature=temperature,
+        max_retries=max_retries,
+        initial_delay=initial_delay,
+        max_delay=max_delay,
+    )
+    return response
 
 
 # Utility functions for the enhanced API
@@ -262,6 +360,7 @@ def load_config_from_file(config_path: str):
 __all__ = [
     # Core functions
     'prompt_with_schema',
+    'prompt_without_schema',
 
     # Utility functions
     'get_available_models',

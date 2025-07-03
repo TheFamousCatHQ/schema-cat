@@ -1,6 +1,6 @@
 [project]
 name = "schema-cat"
-version = "0.1.20"
+version = "0.2.1"
 description = "A Python library for typed prompts"
 authors = [
     { name = "Michael Lahr", email = "michael.lahr@gmail.com" }

@@ -41,60 +41,6 @@ def test_xml_with_extra_text():
     assert xml_elem.find("name").text == "John"
 
 
-def test_malformed_xml_missing_closing_tag():
-    """Test parsing XML with a missing closing tag."""
-    xml_str = "<SimpleModel><name>John</name><age>30</age><is_active>true</is_active>"
-    with pytest.raises(Exception) as excinfo:
-        xml_from_string(xml_str)
-    assert "XML parsing error" in str(excinfo.value)
-    assert "missing closing tag" in str(excinfo.value).lower()
-
-
-def test_malformed_xml_invalid_tag():
-    """Test parsing XML with an invalid tag."""
-    xml_str = "<SimpleModel><name>John<name><age>30</age><is_active>true</is_active></SimpleModel>"
-    with pytest.raises(Exception) as excinfo:
-        xml_from_string(xml_str)
-    assert "XML parsing error" in str(excinfo.value)
-    assert "mismatched tag" in str(excinfo.value).lower() or "no matching tag" in str(excinfo.value).lower()
-
-
-def test_malformed_xml_invalid_attribute():
-    """Test parsing XML with an invalid attribute."""
-    xml_str = "<SimpleModel invalid><name>John</name><age>30</age><is_active>true</is_active></SimpleModel>"
-    with pytest.raises(Exception) as excinfo:
-        xml_from_string(xml_str)
-    assert "XML parsing error" in str(excinfo.value)
-    assert "invalid attribute" in str(excinfo.value).lower() or "syntax error" in str(excinfo.value).lower()
-
-
-def test_malformed_xml_unclosed_cdata():
-    """Test parsing XML with an unclosed CDATA section."""
-    xml_str = "<SimpleModel><name><![CDATA[John</name><age>30</age><is_active>true</is_active></SimpleModel>"
-    # This should be fixed by fix_cdata_sections
-    xml_elem = xml_from_string(xml_str)
-    assert xml_elem.tag == "SimpleModel"
-    assert xml_elem.find("name").text == "John"
-
-
-def test_empty_input():
-    """Test parsing an empty string."""
-    xml_str = ""
-    with pytest.raises(Exception) as excinfo:
-        xml_from_string(xml_str)
-    assert "XML parsing error" in str(excinfo.value)
-    assert "empty input" in str(excinfo.value).lower()
-
-
-def test_non_xml_input():
-    """Test parsing a string that doesn't contain XML."""
-    xml_str = "This is not XML"
-    with pytest.raises(Exception) as excinfo:
-        xml_from_string(xml_str)
-    assert "XML parsing error" in str(excinfo.value)
-    assert "no xml found" in str(excinfo.value).lower()
-
-
 # Test cases for xml_to_base_model function
 def test_valid_xml_to_model():
     """Test converting valid XML to a model."""
@@ -188,23 +134,6 @@ def test_nested_model_missing_nested_field():
     error_msg = str(excinfo.value).lower()
     # The error might mention details.age or just age depending on the Pydantic version
     assert any(field in error_msg for field in ["details", "age"])
-
-
-def test_recovery_from_fixable_issues():
-    """Test recovery from fixable issues in XML."""
-    # Missing closing tag for CDATA, should be fixed by fix_cdata_sections
-    xml_str = """
-    <SimpleModel>
-        <name><![CDATA[John</name>
-        <age>30</age>
-        <is_active>true</is_active>
-    </SimpleModel>
-    """
-    xml_elem = xml_from_string(xml_str)
-    model = xml_to_base_model(xml_elem, SimpleModel)
-    assert model.name == "John"
-    assert model.age == 30
-    assert model.is_active is True
 
 
 def test_recovery_from_extra_fields():

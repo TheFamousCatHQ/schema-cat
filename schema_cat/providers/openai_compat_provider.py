@@ -17,23 +17,16 @@ logger = logging.getLogger("schema_cat.openai_compat")
 class OpenAiCompatProvider(BaseProvider, ABC):
     """OpenAI compatible provider implementation."""
 
-    @with_retry()
-    async def _call(self,
-                    base_url: str,
-                    api_key: str,
-                    model: str,
-                    sys_prompt: str,
-                    user_prompt: str,
-                    xml_schema: str = None,
-                    max_tokens: int = 8192,
-                    temperature: float = 0.0,
-                    max_retries: int = 5,
-                    initial_delay: float = 1.0,
-                    max_delay: float = 60.0,
-                    retry_model: str = None) -> Union[ElementTree.XML, str]:
-
-        if retry_model is None:
-            retry_model = model
+    async def _call_internal(self,
+                            base_url: str,
+                            api_key: str,
+                            model: str,
+                            sys_prompt: str,
+                            user_prompt: str,
+                            xml_schema: str = None,
+                            max_tokens: int = 8192,
+                            temperature: float = 0.0) -> Union[ElementTree.XML, str]:
+        """Internal call method without retry decorator to avoid conflicts."""
         system_prompt = build_system_prompt(sys_prompt, xml_schema)
         data = {
             "model": model,
@@ -78,15 +71,63 @@ class OpenAiCompatProvider(BaseProvider, ABC):
             logger.debug("Successfully parsed response as XML")
             return root
         except XMLParsingError as e:
-            if max_retries > 0:
-                return await self._call(
-                    base_url=base_url,
-                    api_key=api_key,
-                    user_prompt=content,
-                    sys_prompt="Convert this data into valid XML according to the schema",
-                    xml_schema=xml_schema,
-                    model=retry_model,
-                    max_retries=0
-                )
+            logger.warning(f"XML parsing failed: {str(e)}")
+            # Attach the original content to the exception for potential XML fixing
+            e.original_content = content
+            raise e
+
+    @with_retry()
+    async def _call(self,
+                    base_url: str,
+                    api_key: str,
+                    model: str,
+                    sys_prompt: str,
+                    user_prompt: str,
+                    xml_schema: str = None,
+                    max_tokens: int = 8192,
+                    temperature: float = 0.0,
+                    max_retries: int = 5,
+                    initial_delay: float = 1.0,
+                    max_delay: float = 60.0,
+                    retry_model: str = None) -> Union[ElementTree.XML, str]:
+
+        if retry_model is None:
+            retry_model = model
+
+        try:
+            # Try the main call first
+            return await self._call_internal(
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                sys_prompt=sys_prompt,
+                user_prompt=user_prompt,
+                xml_schema=xml_schema,
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+        except XMLParsingError as e:
+            # If XML parsing fails and we have retries left, try to fix the XML
+            if max_retries > 0 and xml_schema is not None:
+                logger.info("XML parsing failed, attempting to fix with retry model")
+                try:
+                    # Get the original content that failed to parse
+                    original_content = getattr(e, 'original_content', 'Invalid XML content')
+                    # Use the internal method to avoid triggering the retry decorator again
+                    return await self._call_internal(
+                        base_url=base_url,
+                        api_key=api_key,
+                        model=retry_model,
+                        sys_prompt="Convert this data into valid XML according to the schema",
+                        user_prompt=original_content,
+                        xml_schema=xml_schema,
+                        max_tokens=max_tokens,
+                        temperature=temperature
+                    )
+                except Exception as retry_error:
+                    logger.warning(f"XML fix attempt failed: {str(retry_error)}")
+                    # If the fix attempt fails, raise the original error
+                    raise e
             else:
+                # No retries left or no schema, raise the original error
                 raise e

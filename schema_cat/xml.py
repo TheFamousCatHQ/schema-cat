@@ -1,7 +1,7 @@
 import logging
 import re
 import warnings
-from typing import Optional, Tuple
+from typing import Tuple
 from xml.etree import ElementTree
 from xml.parsers.expat import ExpatError
 
@@ -51,7 +51,7 @@ def fix_cdata_sections(xml_string: str) -> str:
     return fixed_xml
 
 
-def extract_xml_content(param: str) -> Tuple[str, Optional[str]]:
+def extract_xml_content(param: str) -> str:
     """
     Extract XML content from a string, handling various edge cases.
 
@@ -65,19 +65,19 @@ def extract_xml_content(param: str) -> Tuple[str, Optional[str]]:
         XMLParsingError: If no XML content can be found
     """
     if not param:
-        return "", "Empty input: No XML content provided"
+        raise XMLParsingError(f"No XML found in the input '{param}'")
 
     try:
         xml_start = param.index("<")
         xml_end = param.rfind(">")
 
         if xml_end <= xml_start:
-            return "", "Invalid XML: No closing tag found"
+            raise XMLParsingError(f"Invalid XML: No closing tag found in the input '{param}'")
 
         xml_string = param[xml_start:xml_end + 1]
-        return xml_string, None
+        return xml_string
     except ValueError:
-        return "", "No XML found in the input"
+        raise XMLParsingError(f"No XML found in the input '{param}'")
 
 
 def attempt_xml_repair(xml_string: str) -> Tuple[str, bool, str]:
@@ -138,69 +138,7 @@ def xml_from_string(param: str) -> ElementTree.XML:
         XMLParsingError: If the string cannot be parsed as valid XML
     """
     # Extract XML content
-    xml_string, error = extract_xml_content(param)
-    if error:
-        logger.error(f"XML extraction error: {error}")
-        raise XMLParsingError(f"XML parsing error: {error}")
-
-    # Check for specific test cases that should raise errors
-
-    # Test case: Missing closing tag
-    if "<SimpleModel><name>John</name><age>30</age><is_active>true</is_active>" == xml_string:
-        error_msg = "XML parsing error: missing closing tag"
-        logger.error(error_msg)
-        raise XMLParsingError(error_msg)
-
-    # Test case: Invalid tag
-    if "<SimpleModel><name>John<name><age>30</age><is_active>true</is_active></SimpleModel>" == xml_string:
-        error_msg = "XML parsing error: mismatched tag"
-        logger.error(error_msg)
-        raise XMLParsingError(error_msg)
-
-    # Test case: Invalid attribute
-    if "<SimpleModel invalid><name>John</name><age>30</age><is_active>true</is_active></SimpleModel>" == xml_string:
-        error_msg = "XML parsing error: invalid attribute syntax"
-        logger.error(error_msg)
-        raise XMLParsingError(error_msg)
-
-    # Special case for test_malformed_xml_missing_closing_tag
-    if "<SimpleModel><name>John</name><age>30</age><is_active>true</is_active>" == xml_string.strip():
-        error_msg = "XML parsing error: missing closing tag"
-        logger.error(error_msg)
-        raise XMLParsingError(error_msg)
-
-    # Skip the general missing closing tag check for test cases with unclosed CDATA
-    skip_missing_tag_check = False
-    if "<![CDATA[" in xml_string and "]]>" not in xml_string:
-        if "<SimpleModel><name><![CDATA[John</name>" in xml_string or "name><![CDATA[John</name>" in xml_string:
-            skip_missing_tag_check = True
-
-    # General check for missing closing tags
-    if not skip_missing_tag_check and xml_string.count('<') > xml_string.count('>'):
-        error_msg = "XML parsing error: missing closing tag"
-        logger.error(error_msg)
-        raise XMLParsingError(error_msg)
-
-    # Attempt to repair common issues
-    xml_string, was_repaired, repair_message = attempt_xml_repair(xml_string)
-    if was_repaired:
-        logger.info(f"XML repaired: {repair_message}")
-
-    # Special case for test_malformed_xml_unclosed_cdata
-    if "<SimpleModel><name><![CDATA[John</name><age>30</age><is_active>true</is_active></SimpleModel>" == xml_string.strip():
-        try:
-            elem = ElementTree.fromstring("<SimpleModel><name>John</name><age>30</age><is_active>true</is_active></SimpleModel>")
-            return elem
-        except Exception:
-            pass  # Fall through to normal processing if this fails
-
-    # Special case for test_recovery_from_fixable_issues
-    if "\n    <SimpleModel>\n        <name><![CDATA[John</name>\n        <age>30</age>\n        <is_active>true</is_active>\n    </SimpleModel>\n    " == param:
-        try:
-            elem = ElementTree.fromstring("<SimpleModel><name>John</name><age>30</age><is_active>true</is_active></SimpleModel>")
-            return elem
-        except Exception:
-            pass  # Fall through to normal processing if this fails
+    xml_string = extract_xml_content(param)
 
     # Try to parse the XML
     try:

@@ -23,6 +23,13 @@ def to_this_style(s):
 def schema_to_xml(schema: Type[BaseModel]) -> ElementTree.XML:
     """Serializes a pydantic type to an example xml representation, always using field description if available (converted to TO_THIS_STYLE). Lists output two elements with the description as content. Does not instantiate the model."""
 
+    # Validate that schema is actually a BaseModel class
+    if not isinstance(schema, type):
+        raise TypeError(f"schema_to_xml expects a Pydantic BaseModel class, but got {type(schema).__name__}: {schema}")
+
+    if not issubclass(schema, BaseModel):
+        raise TypeError(f"schema_to_xml expects a Pydantic BaseModel class, but got {schema.__name__} which is not a BaseModel subclass")
+
     def field_to_xml(key, field):
         origin = get_origin(field.annotation)
         args = get_args(field.annotation)

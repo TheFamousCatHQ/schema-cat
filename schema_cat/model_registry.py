@@ -1131,6 +1131,7 @@ def _estimate_model_capabilities(model_id: str, model_data: dict) -> 'ModelCapab
     Returns:
         ModelCapabilities with estimated values
     """
+    # TODO WHAT THE FUCK
     # Start with provided data or defaults
     context_length = model_data.get('context_length', 4096)
     cost_per_1k_tokens = 0.0  # Default, would need pricing API for accurate costs

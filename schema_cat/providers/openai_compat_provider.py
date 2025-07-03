@@ -73,8 +73,6 @@ class OpenAiCompatProvider(BaseProvider, ABC):
             return root
         except XMLParsingError as e:
             if max_retries > 0:
-                from schema_cat import Provider
-                from schema_cat.model_providers import get_model_name_by_common_name_and_provider
                 return await self._call(
                     base_url=base_url,
                     api_key=api_key,

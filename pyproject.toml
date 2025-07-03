@@ -3,24 +3,24 @@ name = "schema-cat"
 version = "0.1.20"
 description = "A Python library for typed prompts"
 authors = [
-    {name = "Michael Lahr",email = "michael.lahr@gmail.com"}
+    { name = "Michael Lahr", email = "michael.lahr@gmail.com" }
 ]
-license = {text = "MIT"}
+license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "pydantic (>=2.11.4,<3.0.0)",
-    "python-dotenv (>=1.1.0,<2.0.0)",
-    "openai (>=1.79.0,<2.0.0)",
-    "lxml (>=5.4.0,<6.0.0)",
-    "bs4 (>=0.0.2,<0.0.3)",
-    "anthropic (>=0.51.0,<0.52.0)",
-    "pyyaml (>=6.0,<7.0.0)"
-]
+requires-python = ">=3.12"
 packages = [
     { include = "schema_cat" }
 ]
 
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+pydantic = "^2.11.7"
+python-dotenv = "^1.1.1"
+openai = "^1.93.0"
+lxml = "^6.0.0"
+bs4 = "^0.0.2"
+anthropic = "^0.56.0"
+pyyaml = "^6.0.2"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

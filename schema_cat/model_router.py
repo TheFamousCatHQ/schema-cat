@@ -1,20 +1,21 @@
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
-import os
 import json
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Dict, List, Optional, Any
 
 # Optional YAML support
 try:
     import yaml
+
     HAS_YAML = True
 except ImportError:
     yaml = None
     HAS_YAML = False
 
 from schema_cat.model_registry import (
-    ModelRegistry, ModelMatcher, ModelResolution, ModelRequirements, 
-    RoutingStrategy, RequestContext, get_global_registry, get_global_matcher
+    ModelRegistry, PipelineModelMatcher, ModelResolution, ModelRequirements,
+    RoutingStrategy, RequestContext, get_global_registry
 )
 from schema_cat.provider_enum import Provider
 
@@ -23,10 +24,39 @@ from schema_cat.provider_enum import Provider
 class RouterConfig:
     """Configuration for the smart model router."""
     default_strategy: RoutingStrategy = RoutingStrategy.BEST_AVAILABLE
+    preferred_providers: List[Provider] = field(default_factory=list)
+    default_requirements: Optional[ModelRequirements] = None
+    model_overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    provider_fallbacks: Dict[Provider, List[Provider]] = field(default_factory=dict)
+    # Keep legacy attributes for backward compatibility
     aliases: Dict[str, str] = field(default_factory=dict)
     provider_priority: List[Provider] = field(default_factory=list)
     overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     provider_settings: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert RouterConfig to dictionary."""
+        result = {
+            'default_strategy': self.default_strategy.value,
+            'preferred_providers': [p.value for p in self.preferred_providers],
+            'model_overrides': self.model_overrides,
+            'provider_fallbacks': {k.value: [p.value for p in v] for k, v in self.provider_fallbacks.items()},
+        }
+
+        if self.default_requirements:
+            result['default_requirements'] = self.default_requirements.to_dict()
+
+        # Include legacy attributes if they have values
+        if self.aliases:
+            result['aliases'] = self.aliases
+        if self.provider_priority:
+            result['provider_priority'] = [p.value for p in self.provider_priority]
+        if self.overrides:
+            result['overrides'] = self.overrides
+        if self.provider_settings:
+            result['provider_settings'] = self.provider_settings
+
+        return result
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'RouterConfig':
@@ -36,16 +66,40 @@ class RouterConfig:
         if isinstance(default_strategy, str):
             default_strategy = RoutingStrategy(default_strategy)
 
-        # Convert provider priority strings to enums
+        # Convert preferred_providers strings to enums
+        preferred_providers = []
+        for provider_str in config_dict.get('preferred_providers', []):
+            preferred_providers.append(Provider(provider_str))
+
+        # Convert provider_priority strings to enums (legacy support)
         provider_priority = []
         for provider_str in config_dict.get('provider_priority', []):
-            try:
-                provider_priority.append(Provider(provider_str))
-            except ValueError:
-                continue  # Skip invalid providers
+            provider_priority.append(Provider(provider_str))
+
+        # Handle default_requirements
+        default_requirements = None
+        if 'default_requirements' in config_dict:
+            req_dict = config_dict['default_requirements']
+            if req_dict:
+                default_requirements = ModelRequirements.from_dict(req_dict)
+
+        # Handle provider_fallbacks
+        provider_fallbacks = {}
+        for provider_str, fallback_list in config_dict.get('provider_fallbacks', {}).items():
+            provider = Provider(provider_str)
+            fallbacks = []
+            for fallback_str in fallback_list:
+                fallbacks.append(Provider(fallback_str))
+            if fallbacks:
+                provider_fallbacks[provider] = fallbacks
 
         return cls(
             default_strategy=default_strategy,
+            preferred_providers=preferred_providers,
+            default_requirements=default_requirements,
+            model_overrides=config_dict.get('model_overrides', {}),
+            provider_fallbacks=provider_fallbacks,
+            # Legacy attributes
             aliases=config_dict.get('aliases', {}),
             provider_priority=provider_priority,
             overrides=config_dict.get('overrides', {}),
@@ -58,7 +112,7 @@ class RouterConfig:
         path = Path(config_path)
 
         if not path.exists():
-            return cls()  # Return default config
+            raise FileNotFoundError(f"File {config_path} does not exist")
 
         with open(path, 'r') as f:
             if path.suffix.lower() in ['.yaml', '.yml']:
@@ -95,7 +149,7 @@ class RouterConfig:
         if HAS_YAML:
             possible_paths.extend([
                 'schema_cat_config.yaml',
-                'schema_cat_config.yml', 
+                'schema_cat_config.yml',
                 '.schema_cat.yaml',
                 '.schema_cat.yml',
             ])
@@ -118,13 +172,23 @@ class RouteResult:
     config_override: Optional[Dict[str, Any]] = None
     routing_reason: str = "default"
 
+    @property
+    def canonical_name(self) -> str:
+        """Get the canonical name from the resolution."""
+        return self.resolution.canonical_name
+
+    @property
+    def provider(self) -> Provider:
+        """Get the provider from the resolution."""
+        return self.resolution.provider
+
 
 class SmartModelRouter:
     """Smart router with configuration and override support."""
 
     def __init__(self, registry: ModelRegistry = None, config: RouterConfig = None):
         self.registry = registry or get_global_registry()
-        self.matcher = ModelMatcher(self.registry)
+        self.matcher = PipelineModelMatcher(self.registry)
         self.config = config or RouterConfig.load_default()
 
         # Apply configuration aliases to registry
@@ -135,7 +199,14 @@ class SmartModelRouter:
         for alias, canonical in self.config.aliases.items():
             self.registry.register_alias(alias, canonical)
 
-    async def route_model(self, model_input: str, context: RequestContext = None) -> Optional[RouteResult]:
+    def set_config(self, config: RouterConfig):
+        """Set the router configuration."""
+        self.config = config
+        self._apply_config_aliases()
+
+    async def route_model(self, model_input: str, context: RequestContext = None,
+                          strategy: RoutingStrategy = None, preferred_providers: List[Provider] = None,
+                          requirements: ModelRequirements = None) -> Optional[RouteResult]:
         """
         Route model request to best provider considering:
         - API key availability
@@ -145,6 +216,14 @@ class SmartModelRouter:
         - Model capabilities (context length, etc.)
         """
         context = context or RequestContext()
+
+        # Override context with direct parameters if provided
+        if strategy is not None:
+            context.strategy = strategy
+        if preferred_providers is not None:
+            context.preferred_providers = preferred_providers
+        if requirements is not None:
+            context.requirements = requirements
 
         # Check for model-specific overrides
         override_config = self._get_model_override(model_input)
@@ -195,20 +274,29 @@ class SmartModelRouter:
 
     def _get_model_override(self, model_input: str) -> Optional[Dict[str, Any]]:
         """Get model-specific override configuration."""
-        # Check direct model name
+        # Check direct model name in model_overrides (new format)
+        if model_input in self.config.model_overrides:
+            return self.config.model_overrides[model_input]
+
+        # Check direct model name in overrides (legacy format)
         if model_input in self.config.overrides:
             return self.config.overrides[model_input]
 
         # Check canonical name
         canonical_name = self.registry.get_canonical_name(model_input)
-        if canonical_name and canonical_name in self.config.overrides:
-            return self.config.overrides[canonical_name]
+        if canonical_name:
+            # Check canonical name in model_overrides (new format)
+            if canonical_name in self.config.model_overrides:
+                return self.config.model_overrides[canonical_name]
+            # Check canonical name in overrides (legacy format)
+            if canonical_name in self.config.overrides:
+                return self.config.overrides[canonical_name]
 
         return None
 
     def _determine_routing_reason(self, model_input: str, resolution: ModelResolution,
-                                override_config: Optional[Dict[str, Any]], 
-                                preferred_providers: List[Provider]) -> str:
+                                  override_config: Optional[Dict[str, Any]],
+                                  preferred_providers: List[Provider]) -> str:
         """Determine the reason for the routing decision."""
         if override_config:
             if 'preferred_provider' in override_config:

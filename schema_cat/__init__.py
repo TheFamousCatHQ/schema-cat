@@ -5,13 +5,11 @@ from typing import Type, TypeVar, List, Optional
 
 from pydantic import BaseModel
 
-from schema_cat.model_providers import MODEL_PROVIDER_MAP
 from schema_cat.model_registry import (
     ModelRequirements, RoutingStrategy, RequestContext, ModelResolution, get_global_registry, get_global_matcher,
     discover_and_register_models
 )
 from schema_cat.model_router import get_global_router, RouterConfig, configure_global_router
-from schema_cat.provider import get_provider_and_model
 from schema_cat.provider_enum import Provider, _provider_api_key_available
 from schema_cat.retry import with_retry, retry_with_exponential_backoff
 from schema_cat.schema import schema_to_xml, xml_to_string, xml_to_base_model
@@ -100,9 +98,13 @@ async def prompt_with_schema(
         provider_model = model
         logging.info(f"Using legacy routing with provider: {p.value}, model: {provider_model}")
     elif not use_smart_routing:
-        # Use legacy routing system
-        p, provider_model = get_provider_and_model(model)
-        logging.info(f"Using legacy routing - provider: {p.value}, model: {provider_model}")
+        # Use new pipeline system even when smart routing is disabled
+        resolution = await resolve_model(model, preferred_providers, routing_strategy, model_requirements)
+        if resolution is None:
+            raise ValueError(f"No available provider for model '{model}'")
+        p = resolution.provider
+        provider_model = resolution.model_name
+        logging.info(f"Using pipeline routing - provider: {p.value}, model: {provider_model}, canonical: {resolution.canonical_name}")
     else:
         # Use new smart routing system
         router = get_global_router()
@@ -118,13 +120,14 @@ async def prompt_with_schema(
         route_result = await router.route_model(model, context)
 
         if route_result is None:
-            # Fallback to legacy system if smart routing fails
-            logging.warning(f"Smart routing failed for model '{model}', falling back to legacy routing")
-            try:
-                p, provider_model = get_provider_and_model(model)
-                logging.info(f"Fallback routing - provider: {p.value}, model: {provider_model}")
-            except ValueError as e:
-                raise ValueError(f"No available provider for model '{model}'. {str(e)}")
+            # Fallback to direct pipeline resolution if smart routing fails
+            logging.warning(f"Smart routing failed for model '{model}', falling back to direct pipeline resolution")
+            resolution = await resolve_model(model, preferred_providers, routing_strategy, model_requirements)
+            if resolution is None:
+                raise ValueError(f"No available provider for model '{model}'")
+            p = resolution.provider
+            provider_model = resolution.model_name
+            logging.info(f"Fallback pipeline routing - provider: {p.value}, model: {provider_model}, canonical: {resolution.canonical_name}")
         else:
             p = route_result.resolution.provider
             provider_model = route_result.resolution.model_name
@@ -281,8 +284,6 @@ __all__ = [
     'xml_to_base_model',
 
     # Legacy exports for backward compatibility
-    'MODEL_PROVIDER_MAP',
-    'get_provider_and_model',
     'with_retry',
     'retry_with_exponential_backoff',
 ]

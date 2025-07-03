@@ -15,6 +15,25 @@ class ModelRequirements:
     max_cost_per_1k_tokens: Optional[float] = None
     min_quality_score: Optional[float] = None
 
+    def to_dict(self) -> Dict[str, any]:
+        """Convert ModelRequirements to dictionary."""
+        return {
+            'min_context_length': self.min_context_length,
+            'supports_function_calling': self.supports_function_calling,
+            'max_cost_per_1k_tokens': self.max_cost_per_1k_tokens,
+            'min_quality_score': self.min_quality_score
+        }
+
+    @classmethod
+    def from_dict(cls, req_dict: Dict[str, any]) -> 'ModelRequirements':
+        """Create ModelRequirements from dictionary."""
+        return cls(
+            min_context_length=req_dict.get('min_context_length'),
+            supports_function_calling=req_dict.get('supports_function_calling'),
+            max_cost_per_1k_tokens=req_dict.get('max_cost_per_1k_tokens'),
+            min_quality_score=req_dict.get('min_quality_score')
+        )
+
 
 @dataclass
 class ModelCapabilities:

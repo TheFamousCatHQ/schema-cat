@@ -236,6 +236,8 @@ class SmartModelRouter:
                 preferred_providers = [preferred_provider]
             elif override_config and 'fallback_providers' in override_config:
                 preferred_providers = [Provider(p) for p in override_config['fallback_providers']]
+            elif self.config.preferred_providers:
+                preferred_providers = self.config.preferred_providers
             else:
                 preferred_providers = self.config.provider_priority
 

@@ -72,7 +72,8 @@ async def _resolve_provider_and_model(
             raise ValueError(f"No available provider for model '{model}'")
         p = resolution.provider
         provider_model = resolution.model_name
-        logging.info(f"Using pipeline routing - provider: {p.value}, model: {provider_model}, canonical: {resolution.canonical_name}")
+        logging.info(
+            f"Using pipeline routing - provider: {p.value}, model: {provider_model}, canonical: {resolution.canonical_name}")
     else:
         # Use new smart routing system
         router = get_global_router()
@@ -95,7 +96,8 @@ async def _resolve_provider_and_model(
                 raise ValueError(f"No available provider for model '{model}'")
             p = resolution.provider
             provider_model = resolution.model_name
-            logging.info(f"Fallback pipeline routing - provider: {p.value}, model: {provider_model}, canonical: {resolution.canonical_name}")
+            logging.info(
+                f"Fallback pipeline routing - provider: {p.value}, model: {provider_model}, canonical: {resolution.canonical_name}")
         else:
             p = route_result.resolution.provider
             provider_model = route_result.resolution.model_name
@@ -249,6 +251,9 @@ async def prompt_without_schema(
     return response
 
 
+prompt = prompt_without_schema
+
+
 # Utility functions for the enhanced API
 def get_available_models(provider: Provider = None) -> List[str]:
     """
@@ -293,10 +298,10 @@ async def validate_model_availability(model: str) -> bool:
 
 
 async def resolve_model(
-    model: str,
-    preferred_providers: List[Provider] = None,
-    routing_strategy: RoutingStrategy = RoutingStrategy.BEST_AVAILABLE,
-    model_requirements: ModelRequirements = None
+        model: str,
+        preferred_providers: List[Provider] = None,
+        routing_strategy: RoutingStrategy = RoutingStrategy.BEST_AVAILABLE,
+        model_requirements: ModelRequirements = None
 ) -> Optional[ModelResolution]:
     """
     Resolve a model input to the best available provider/model combination.

@@ -59,7 +59,11 @@ class OpenRouterProvider(OpenAiCompatProvider):
                     headers=headers,
                     timeout=30
                 )
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    logger.error(f"OpenRouter API call failed: {response.text}: {e}")
+                    raise e
                 data = response.json()
 
                 models = []

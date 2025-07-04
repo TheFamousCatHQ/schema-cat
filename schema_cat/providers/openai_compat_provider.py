@@ -18,14 +18,14 @@ class OpenAiCompatProvider(BaseProvider, ABC):
     """OpenAI compatible provider implementation."""
 
     async def _call_internal(self,
-                            base_url: str,
-                            api_key: str,
-                            model: str,
-                            sys_prompt: str,
-                            user_prompt: str,
-                            xml_schema: str = None,
-                            max_tokens: int = 8192,
-                            temperature: float = 0.0) -> Union[ElementTree.XML, str]:
+                             base_url: str,
+                             api_key: str,
+                             model: str,
+                             sys_prompt: str,
+                             user_prompt: str,
+                             xml_schema: str = None,
+                             max_tokens: int = 8192,
+                             temperature: float = 0.0) -> Union[ElementTree.XML, str]:
         """Internal call method without retry decorator to avoid conflicts."""
         system_prompt = build_system_prompt(sys_prompt, xml_schema)
         data = {
@@ -54,7 +54,11 @@ class OpenAiCompatProvider(BaseProvider, ABC):
                 json=data,
                 timeout=60
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"OpenAI compatible API call failed: {response.text}: {e}")
+                raise e
             content = response.json()["choices"][0]["message"]["content"].strip()
 
         logger.info(f"Successfully received response from {self.__class__.__name__}")

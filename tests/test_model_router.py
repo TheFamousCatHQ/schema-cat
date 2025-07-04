@@ -190,7 +190,7 @@ class TestConfigFileOperations:
         """Test loading configuration from file."""
         config_dict = {
             "default_strategy": "cheapest",
-            "provider_priority": ["openai", "anthropic"],
+            "preferred_providers": ["openai", "anthropic"],
             "overrides": {
                 "gpt-4": {"strategy": "highest_quality"}
             }
@@ -205,6 +205,7 @@ class TestConfigFileOperations:
             config = RouterConfig.load_from_file(config_file)
 
             assert config.default_strategy == RoutingStrategy.CHEAPEST
+            assert config.preferred_providers == [Provider.OPENAI, Provider.ANTHROPIC]
             assert config.overrides == {"gpt-4": {"strategy": "highest_quality"}}
         finally:
             os.unlink(config_file)
@@ -213,6 +214,54 @@ class TestConfigFileOperations:
         """Test loading configuration from non-existent file."""
         with pytest.raises(FileNotFoundError):
             RouterConfig.load_from_file("nonexistent_config.json")
+
+    def test_load_config_from_env_var(self):
+        """Test loading preferred_providers from environment variable."""
+        # Set environment variable
+        os.environ['SCHEMA_CAT_PREFERRED_PROVIDERS'] = 'comet,openrouter,openai'
+
+        try:
+            # Load config with empty dict (should use env var)
+            config = RouterConfig.from_dict({})
+
+            assert config.preferred_providers == [Provider.COMET, Provider.OPENROUTER, Provider.OPENAI]
+        finally:
+            # Clean up environment variable
+            if 'SCHEMA_CAT_PREFERRED_PROVIDERS' in os.environ:
+                del os.environ['SCHEMA_CAT_PREFERRED_PROVIDERS']
+
+    def test_config_file_overrides_env_var(self):
+        """Test that config file takes precedence over environment variable."""
+        # Set environment variable
+        os.environ['SCHEMA_CAT_PREFERRED_PROVIDERS'] = 'comet,openrouter'
+
+        try:
+            # Config dict with preferred_providers should override env var
+            config_dict = {
+                "preferred_providers": ["openai", "anthropic"]
+            }
+            config = RouterConfig.from_dict(config_dict)
+
+            assert config.preferred_providers == [Provider.OPENAI, Provider.ANTHROPIC]
+        finally:
+            # Clean up environment variable
+            if 'SCHEMA_CAT_PREFERRED_PROVIDERS' in os.environ:
+                del os.environ['SCHEMA_CAT_PREFERRED_PROVIDERS']
+
+    def test_env_var_with_invalid_providers(self):
+        """Test that invalid provider names in env var are skipped."""
+        # Set environment variable with invalid provider
+        os.environ['SCHEMA_CAT_PREFERRED_PROVIDERS'] = 'openai,invalid_provider,anthropic'
+
+        try:
+            config = RouterConfig.from_dict({})
+
+            # Should only include valid providers
+            assert config.preferred_providers == [Provider.OPENAI, Provider.ANTHROPIC]
+        finally:
+            # Clean up environment variable
+            if 'SCHEMA_CAT_PREFERRED_PROVIDERS' in os.environ:
+                del os.environ['SCHEMA_CAT_PREFERRED_PROVIDERS']
 
 
 class TestRouteResult:

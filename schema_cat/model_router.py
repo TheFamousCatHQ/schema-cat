@@ -30,7 +30,6 @@ class RouterConfig:
     provider_fallbacks: Dict[Provider, List[Provider]] = field(default_factory=dict)
     # Keep legacy attributes for backward compatibility
     aliases: Dict[str, str] = field(default_factory=dict)
-    provider_priority: List[Provider] = field(default_factory=list)
     overrides: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     provider_settings: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
@@ -49,8 +48,6 @@ class RouterConfig:
         # Include legacy attributes if they have values
         if self.aliases:
             result['aliases'] = self.aliases
-        if self.provider_priority:
-            result['provider_priority'] = [p.value for p in self.provider_priority]
         if self.overrides:
             result['overrides'] = self.overrides
         if self.provider_settings:
@@ -68,13 +65,25 @@ class RouterConfig:
 
         # Convert preferred_providers strings to enums
         preferred_providers = []
-        for provider_str in config_dict.get('preferred_providers', []):
-            preferred_providers.append(Provider(provider_str))
 
-        # Convert provider_priority strings to enums (legacy support)
-        provider_priority = []
-        for provider_str in config_dict.get('provider_priority', []):
-            provider_priority.append(Provider(provider_str))
+        # First check environment variable
+        env_providers = os.getenv('SCHEMA_CAT_PREFERRED_PROVIDERS')
+        if env_providers:
+            for provider_str in env_providers.split(','):
+                provider_str = provider_str.strip()
+                if provider_str:
+                    try:
+                        preferred_providers.append(Provider(provider_str))
+                    except ValueError:
+                        # Skip invalid provider names
+                        pass
+
+        # Then check config dict (config file takes precedence over env var)
+        config_providers = config_dict.get('preferred_providers', [])
+        if config_providers:
+            preferred_providers = []  # Reset if config file has providers
+            for provider_str in config_providers:
+                preferred_providers.append(Provider(provider_str))
 
         # Handle default_requirements
         default_requirements = None
@@ -101,7 +110,6 @@ class RouterConfig:
             provider_fallbacks=provider_fallbacks,
             # Legacy attributes
             aliases=config_dict.get('aliases', {}),
-            provider_priority=provider_priority,
             overrides=config_dict.get('overrides', {}),
             provider_settings=config_dict.get('provider_settings', {})
         )
@@ -239,7 +247,7 @@ class SmartModelRouter:
             elif self.config.preferred_providers:
                 preferred_providers = self.config.preferred_providers
             else:
-                preferred_providers = self.config.provider_priority
+                preferred_providers = []
 
         # Determine routing strategy
         strategy = context.strategy or self.config.default_strategy

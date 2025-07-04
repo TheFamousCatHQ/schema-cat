@@ -5,7 +5,7 @@ model_routing:
   # Default strategy for model selection
   # Options: best_available, cheapest, fastest, most_reliable, highest_quality
   default_strategy: "best_available"
-  
+
   # Simple name mappings - allows using friendly names like 'gpt4' instead of full model names
   aliases:
     gpt4: "gpt-4.1-mini"
@@ -16,46 +16,47 @@ model_routing:
     claude-haiku: "claude-haiku"
     gemini: "gemini-2.5-flash-preview"
     gemini-flash: "gemini-2.5-flash-preview"
-    
+
     # Custom aliases for your specific use cases
     my-fast-model: "gpt-4o-mini"
     my-smart-model: "claude-3.5-sonnet"
     my-cheap-model: "gemini-2.5-flash-preview"
-  
-  # Provider priority - which providers to prefer in order
+
+  # Preferred providers - which providers to prefer in order
   # The system will try providers in this order when multiple options are available
-  provider_priority:
+  # Can also be set via environment variable: SCHEMA_CAT_PREFERRED_PROVIDERS=openrouter,openai,anthropic,comet
+  preferred_providers:
     - openrouter  # Try OpenRouter first (often cheaper)
     - openai      # Then direct OpenAI
     - anthropic   # Then Anthropic
     - comet       # Finally Comet
-  
+
   # Model-specific overrides - customize behavior for specific models
   overrides:
     "gpt-4.1-mini":
       preferred_provider: "openai"  # Always use OpenAI for this model
       fallback_providers: ["openrouter"]  # Fallback options
       strategy: "fastest"  # Override default strategy for this model
-    
+
     "claude-3.5-sonnet":
       preferred_provider: "anthropic"  # Use Anthropic directly
       cost_threshold: 0.01  # Switch to cheaper alternative if cost > $0.01/1k tokens
-      
+
     "gemini-2.5-flash-preview":
       preferred_provider: "openrouter"
       strategy: "cheapest"
-  
+
   # Provider-specific settings
   provider_settings:
     openrouter:
       health_check_interval: 300  # seconds
       timeout: 30
       retry_attempts: 3
-    
+
     openai:
       rate_limit_strategy: "exponential_backoff"
       timeout: 60
-    
+
     anthropic:
       timeout: 45
       retry_attempts: 5
